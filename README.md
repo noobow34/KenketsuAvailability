@@ -32,6 +32,8 @@
 
 ---
 
+![献血空き横断検索 — 献血ルームの空き状況をまとめて検索](docs/images/overview.png)
+
 # 献血空き横断検索（KenketsuAvailability）
 
 複数の献血ルームの予約空き状況を、日付を指定して横断的に一覧できる Windows デスクトップアプリです。
