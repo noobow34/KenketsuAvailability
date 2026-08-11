@@ -149,12 +149,36 @@ dotnet publish KenketsuAvailability/KenketsuAvailability.csproj -c Release -o pu
 
 ## リリース手順
 
-タグを打つと GitHub Actions（[`.github/workflows/release.yml`](../.github/workflows/release.yml)）が
-単一 exe をビルドして Release に添付する。
+1. [`CHANGELOG.md`](../CHANGELOG.md) の先頭に `## vX.Y.Z` の節を足して変更点を書く
+2. `KenketsuAvailability.csproj` の `<Version>` を上げる
+3. [`README.md`](../README.md) の「最新版をダウンロード」のリンクを新しいバージョンに書き換える
+4. コミットして push したあと、タグを打つ
 
 ```bash
-git tag v2.0.0 && git push origin v2.0.0
+git tag v1.2.0 && git push origin v1.2.0
 ```
+
+タグを push すると GitHub Actions（[`.github/workflows/release.yml`](../.github/workflows/release.yml)）が
+単一 exe をビルドし、Release を作って添付する。Release の本文は
+[`.github/release-notes.md`](../.github/release-notes.md) をテンプレートに、
+`CHANGELOG.md` から該当バージョンの節を差し込んで組み立てる。
+
+テンプレート内で使える差し込み記号は次のとおり。
+**これらの文字列は本文中どこでも置換されるので、説明のつもりで書くと巻き込まれる**（この表がここにある理由）。
+
+| 記号 | 差し込まれるもの |
+|------|------------------|
+| `{{VERSION}}` | `1.1.0` のようなバージョン |
+| `{{ASSET}}` | 配布する exe のファイル名 |
+| `{{URL}}` | その exe への直リンク |
+| `{{CHANGELOG}}` | `CHANGELOG.md` から抜き出した該当バージョンの節 |
+| `{{COMPARE}}` | 前のタグとの差分ページへのリンク（前のタグが無ければ空） |
+
+- CHANGELOG に該当バージョンの節が無いとワークフローが警告を出し、本文は「変更点の記載がありません」になる。
+  ビルド自体は止めない。
+- README のリンクは exe の直リンクなので、**リリースのたびに手で更新する**。
+  資産名にバージョンを含めているため `releases/latest/download/...` の固定URLが使えないため。
+  更新を自動化したい場合は、資産名からバージョンを外すのが手っ取り早い。
 
 献血ルーム一覧はスプレッドシート側で管理しているため、ルームの追加・変更でリリースし直す必要はない。
 

@@ -46,8 +46,11 @@
 
 ## ダウンロード
 
-[Releases](../../releases) から `KenketsuAvailability-vX.Y.Z-win-x64.exe` をダウンロードして実行するだけです。
+### ⬇ [最新版をダウンロード（v1.1.0）](https://github.com/noobow34/KenketsuAvailability/releases/download/v1.1.0/KenketsuAvailability-v1.1.0-win-x64.exe)
+
+ダウンロードした exe をそのまま実行するだけです。
 インストール作業や .NET ランタイムの導入は不要です（自己完結・単一ファイル）。
+過去のバージョンや変更履歴は [Releases](../../releases) と [CHANGELOG.md](CHANGELOG.md) を参照してください。
 
 | 項目 | 内容 |
 |------|------|
