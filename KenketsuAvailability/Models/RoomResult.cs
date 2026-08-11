@@ -4,16 +4,22 @@ using KenketsuAvailability.Services;
 namespace KenketsuAvailability.Models;
 
 /// <summary>
-/// 1ルーム分の取得結果。取得できたものから順に画面へ積んでいく。
+/// 結果カード1枚分。取得できたものから順に画面へ積んでいく。
+/// ルーム横断では献血ルーム1件、日付横断では1日分にあたる。
 /// </summary>
 public class RoomResult
 {
-    public int CenterId { get; set; }
+    /// <summary>描画時の @key。ルーム横断は CenterId、日付横断は日付。</summary>
+    public string Key { get; set; } = string.Empty;
 
-    public string CenterName { get; set; } = string.Empty;
+    /// <summary>カードの見出し。ルーム横断はルーム名、日付横断は日付。</summary>
+    public string Title { get; set; } = string.Empty;
 
-    /// <summary>都道府県の変わり目で結果グリッドを折り返すために保持する。</summary>
-    public string Prefecture { get; set; } = string.Empty;
+    /// <summary>
+    /// 都道府県の変わり目で結果グリッドを折り返すために保持する。
+    /// 日付横断では折り返さないので null。
+    /// </summary>
+    public string? Prefecture { get; set; }
 
     public string ReserveUrl { get; set; } = string.Empty;
 

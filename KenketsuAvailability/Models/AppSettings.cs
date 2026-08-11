@@ -1,3 +1,5 @@
+using KenketsuAvailability.Constants;
+
 namespace KenketsuAvailability.Models;
 
 /// <summary>
@@ -17,6 +19,15 @@ public class AppSettings
 
     /// <summary>名前付きの献血ルーム選択セット。</summary>
     public List<PresetItem> Presets { get; set; } = [];
+
+    /// <summary>前回の検索方向（ルーム横断／日付横断）。</summary>
+    public BloodDonationSearchModeEnum SearchMode { get; set; } = BloodDonationSearchModeEnum.Rooms;
+
+    /// <summary>日付横断で前回選択していた献血ルーム。</summary>
+    public int? SingleCenterId { get; set; }
+
+    /// <summary>日付横断で前回選択していた対象日。過ぎた日は読み込み時に落とす。</summary>
+    public List<DateOnly> TargetDates { get; set; } = [];
 
     /// <summary>
     /// 直近のリクエスト時刻（ルーム1件＝1レコード）。1時間あたりの上限判定に使う。

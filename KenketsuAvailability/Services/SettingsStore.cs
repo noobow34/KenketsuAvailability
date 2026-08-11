@@ -1,3 +1,4 @@
+using KenketsuAvailability.Constants;
 using KenketsuAvailability.Models;
 using System.IO;
 using System.Text.Json;
@@ -68,11 +69,16 @@ public class SettingsStore
         }
     }
 
-    /// <summary>検索条件（対象日・献血ルーム）を保存する。画面での変更のたびに呼ばれる。</summary>
-    public void SaveCondition(IEnumerable<int> centerIds, DateOnly? targetDate)
+    /// <summary>検索条件を保存する。画面での変更のたびに呼ばれる。</summary>
+    public void SaveCondition(BloodDonationSearchModeEnum searchMode,
+        IEnumerable<int> centerIds, DateOnly? targetDate,
+        int? singleCenterId, IEnumerable<DateOnly> targetDates)
     {
+        Settings.SearchMode = searchMode;
         Settings.CenterIds = centerIds.Distinct().ToList();
         Settings.TargetDate = targetDate;
+        Settings.SingleCenterId = singleCenterId;
+        Settings.TargetDates = targetDates.Distinct().Order().ToList();
         Save();
     }
 

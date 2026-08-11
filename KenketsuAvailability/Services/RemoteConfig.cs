@@ -33,8 +33,11 @@ public class RemoteConfig
     /// <summary>ルーム1件ごとのウェイト（ミリ秒）。</summary>
     public int RoomIntervalMs { get; set; } = DefaultRoomIntervalMs;
 
-    /// <summary>1回の検索で取得できるルーム数の上限。</summary>
+    /// <summary>1回の検索で取得できるルーム数の上限（ルーム横断）。</summary>
     public int MaxRoomsPerSearch { get; set; } = DefaultMaxRoomsPerSearch;
+
+    /// <summary>1回の検索で取得できる日数の上限（日付横断）。</summary>
+    public int MaxDatesPerSearch { get; set; } = DefaultMaxDatesPerSearch;
 
     /// <summary>検索が終わってから次の検索を始められるまでの待ち時間（秒）。</summary>
     public int CooldownSeconds { get; set; } = DefaultCooldownSeconds;
@@ -50,6 +53,7 @@ public class RemoteConfig
 
     public const int DefaultRoomIntervalMs = 300;
     public const int DefaultMaxRoomsPerSearch = 50;
+    public const int DefaultMaxDatesPerSearch = 7;
     public const int DefaultCooldownSeconds = 30;
     public const int DefaultHourlyRequestLimit = 200;
 
@@ -57,6 +61,8 @@ public class RemoteConfig
     public const int MaxRoomIntervalMs = 60_000;
     public const int MinMaxRoomsPerSearch = 1;
     public const int MaxMaxRoomsPerSearch = 100;
+    public const int MinMaxDatesPerSearch = 1;
+    public const int MaxMaxDatesPerSearch = 60;
     public const int MinCooldownSeconds = 0;
     public const int MaxCooldownSeconds = 3600;
     public const int MinHourlyRequestLimit = 1;

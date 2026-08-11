@@ -31,7 +31,8 @@ UIをHTML/CSSでそのまま書けるため。実行には WebView2 ランタイ
 | `Services/CenterMaster.cs` | ルーム一覧を 地方→都道府県→ルーム の3階層に組み立てる |
 | `Services/EmbeddedWwwrootFileProvider.cs` | 画面のファイルを埋め込みリソースから配る（単一exe用） |
 | `Components/MainPage.razor` | 画面本体。読み込み中・停止中・エラー・通常の4状態を持つ |
-| `Components/CenterPicker.razor` | 献血ルームの選択ピッカー |
+| `Components/CenterPicker.razor` | 献血ルームの選択ピッカー（ルーム横断） |
+| `Components/DatePicker.razor` | 対象日の選択カレンダー（日付横断） |
 | `Components/AuthorMessage.razor` | 作者からのお知らせ（HTML / プレーンテキスト） |
 
 ---
@@ -76,7 +77,8 @@ APIキーや認証は不要。
 | `message` | 作者からのお知らせ。空なら非表示 | `メンテナンス中です` |
 | `messageFormat` | `html` または `text`（既定は `text`） | `html` |
 | `roomIntervalMs` | ルーム間のウェイト（ミリ秒） | `300` |
-| `maxRoomsPerSearch` | 1回の検索で取得できるルーム数 | `50` |
+| `maxRoomsPerSearch` | 1回の検索で取得できるルーム数（ルーム横断） | `50` |
+| `maxDatesPerSearch` | 1回の検索で取得できる日数（日付横断）。既定 `7` | `7` |
 | `cooldownSeconds` | 検索と検索の間隔（秒） | `30` |
 | `hourlyRequestLimit` | 1時間あたりのリクエスト数 | `200` |
 

@@ -1,3 +1,5 @@
+using KenketsuAvailability.Constants;
+
 namespace KenketsuAvailability.Services;
 
 /// <summary>
@@ -23,8 +25,15 @@ public class RateLimiter
     /// <summary>ルーム1件ごとのウェイト。連続アクセスの間隔をあける。</summary>
     public int RoomIntervalMs => _remote.Config.RoomIntervalMs;
 
-    /// <summary>1回の検索で取得できるルーム数の上限。</summary>
+    /// <summary>1回の検索で取得できるルーム数の上限（ルーム横断）。</summary>
     public int MaxRoomsPerSearch => _remote.Config.MaxRoomsPerSearch;
+
+    /// <summary>1回の検索で取得できる日数の上限（日付横断）。</summary>
+    public int MaxDatesPerSearch => _remote.Config.MaxDatesPerSearch;
+
+    /// <summary>検索方向ごとの1回あたりの上限。</summary>
+    public int MaxPerSearch(BloodDonationSearchModeEnum mode)
+        => mode == BloodDonationSearchModeEnum.Dates ? MaxDatesPerSearch : MaxRoomsPerSearch;
 
     /// <summary>検索が終わってから次の検索を始められるまでの待ち時間（秒）。</summary>
     public int CooldownSeconds => _remote.Config.CooldownSeconds;
@@ -79,12 +88,15 @@ public class RateLimiter
     /// <summary>
     /// この件数で検索を始めてよいか。ダメな場合は画面に出す理由を返す。
     /// </summary>
-    public (bool Ok, string Message) CanStart(int roomCount)
+    public (bool Ok, string Message) CanStart(int count, BloodDonationSearchModeEnum mode)
     {
-        if (roomCount > MaxRoomsPerSearch)
+        //ルーム横断は「ルーム」、日付横断は「日」を数える。どちらも1件＝1リクエスト
+        string unit = mode == BloodDonationSearchModeEnum.Dates ? "日" : "ルーム";
+        int maxPerSearch = MaxPerSearch(mode);
+        if (count > maxPerSearch)
         {
-            return (false, $"1回の検索で取得できるのは{MaxRoomsPerSearch}ルームまでです。\n"
-                         + $"選択を{MaxRoomsPerSearch}件以下に減らしてください（現在{roomCount}件）。");
+            return (false, $"1回の検索で取得できるのは{maxPerSearch}{unit}までです。\n"
+                         + $"選択を{maxPerSearch}件以下に減らしてください（現在{count}件）。");
         }
 
         int cooldown = CooldownRemainingSeconds;
@@ -94,7 +106,7 @@ public class RateLimiter
         }
 
         int remaining = RemainingHourly;
-        if (roomCount > remaining)
+        if (count > remaining)
         {
             string recover = RecoverAfter is TimeSpan span
                 ? $"約{Math.Max(1, (int)Math.Ceiling(span.TotalMinutes))}分後に枠が回復します。"

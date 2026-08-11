@@ -1,0 +1,27 @@
+@*
+    取得ボタン。検索方向ごとに条件行が別なので、共通部品として切り出している。
+    クールダウン中は残り秒数を出して押せなくする。
+*@
+<button type="button" class="btn-red" disabled="@(Searching || CooldownRemaining > 0)" @onclick="OnSearch">
+    @if (CooldownRemaining > 0)
+    {
+        <i class="fa-regular fa-clock me-1"></i>
+        @($"あと{CooldownRemaining}秒")
+    }
+    else
+    {
+        <i class="fa-solid fa-magnifying-glass me-1"></i>
+        <text>空き状況を取得</text>
+    }
+</button>
+
+@code {
+    [Parameter]
+    public bool Searching { get; set; }
+
+    [Parameter]
+    public int CooldownRemaining { get; set; }
+
+    [Parameter]
+    public EventCallback OnSearch { get; set; }
+}

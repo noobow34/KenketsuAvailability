@@ -156,6 +156,8 @@ public class RemoteConfigService
                 RemoteConfig.DefaultRoomIntervalMs, RemoteConfig.MinRoomIntervalMs, RemoteConfig.MaxRoomIntervalMs),
             MaxRoomsPerSearch = ParseInt(Get(values, "maxRoomsPerSearch"),
                 RemoteConfig.DefaultMaxRoomsPerSearch, RemoteConfig.MinMaxRoomsPerSearch, RemoteConfig.MaxMaxRoomsPerSearch),
+            MaxDatesPerSearch = ParseInt(Get(values, "maxDatesPerSearch"),
+                RemoteConfig.DefaultMaxDatesPerSearch, RemoteConfig.MinMaxDatesPerSearch, RemoteConfig.MaxMaxDatesPerSearch),
             CooldownSeconds = ParseInt(Get(values, "cooldownSeconds"),
                 RemoteConfig.DefaultCooldownSeconds, RemoteConfig.MinCooldownSeconds, RemoteConfig.MaxCooldownSeconds),
             HourlyRequestLimit = ParseInt(Get(values, "hourlyRequestLimit"),

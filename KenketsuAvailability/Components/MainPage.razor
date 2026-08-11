@@ -60,6 +60,19 @@ else
 
     <!-- 検索条件 -->
     <div class="section-card">
+        <div class="mode-tabs">
+            <button type="button" class="mode-tab @(searchMode == BloodDonationSearchModeEnum.Rooms ? "active" : "")"
+                    @onclick="() => SetMode(BloodDonationSearchModeEnum.Rooms)">
+                ルーム横断<span class="mode-sub">1日 × 複数ルーム</span>
+            </button>
+            <button type="button" class="mode-tab @(searchMode == BloodDonationSearchModeEnum.Dates ? "active" : "")"
+                    @onclick="() => SetMode(BloodDonationSearchModeEnum.Dates)">
+                日付横断<span class="mode-sub">1ルーム × 複数日</span>
+            </button>
+        </div>
+
+        @if (searchMode == BloodDonationSearchModeEnum.Rooms)
+        {
         <div class="cond-row">
             <div class="cond-date">
                 <label class="form-label-sm">対象日</label>
@@ -99,27 +112,63 @@ else
             </div>
 
             <div class="cond-action">
-                <button type="button" class="btn-red" disabled="@(searching || CooldownRemaining > 0)" @onclick="SearchAsync">
-                    @if (CooldownRemaining > 0)
-                    {
-                        <i class="fa-regular fa-clock me-1"></i>
-                        @($"あと{CooldownRemaining}秒")
-                    }
-                    else
-                    {
-                        <i class="fa-solid fa-magnifying-glass me-1"></i>
-                        <text>空き状況を取得</text>
-                    }
-                </button>
+                <SearchButton Searching="searching" CooldownRemaining="CooldownRemaining" OnSearch="SearchAsync" />
             </div>
         </div>
+        }
+        else
+        {
+        <div class="cond-row">
+            <div class="cond-room">
+                <label class="form-label-sm">献血ルーム</label>
+                <select class="form-ctrl w-room" @bind:get="SingleCenterValue" @bind:set="OnSingleCenterChanged">
+                    <option value="">（未選択）</option>
+                    @*ツリーと同じ 地方＞都道府県 の並びで、都道府県ごとにまとめる*@
+                    @foreach (var region in Master.RegionGroups)
+                    {
+                        @foreach (var pref in region.PrefectureGroups)
+                        {
+                            <optgroup label="@($"{region.Region} / {pref.Prefecture}")">
+                                @foreach (var center in pref.Centers)
+                                {
+                                    <option value="@center.CenterId">@center.CenterName</option>
+                                }
+                            </optgroup>
+                        }
+                    }
+                </select>
+            </div>
+
+            <div class="cond-centers">
+                <label class="form-label-sm">対象日</label>
+                <div class="summary-box">
+                    <div class="summary-text">
+                        <span class="summary-main @(appliedDates.Count == 0 ? "is-empty" : "")">@DateSummaryMain</span>
+                        <span class="summary-sub">@DateSummarySub</span>
+                    </div>
+                    <button type="button" class="btn-outline" @onclick="OpenDatePicker">変更</button>
+                </div>
+            </div>
+
+            <div class="cond-action">
+                <SearchButton Searching="searching" CooldownRemaining="CooldownRemaining" OnSearch="SearchAsync" />
+            </div>
+        </div>
+        }
 
         @*一般配布するため、先方サイトへの負荷を抑えている旨と現在の残枠を常に見せておく*@
         <div class="rate-note">
             <i class="fa-solid fa-hand me-1"></i>
             日本赤十字社のサイトに負荷をかけないよう、アクセスを制限しています。
             <b>1件ずつ@(Limiter.RoomIntervalMs / 1000.0)秒あけて順番に取得</b>／
-            <b>1回の検索は@(Limiter.MaxRoomsPerSearch)ルームまで</b>／
+            @if (searchMode == BloodDonationSearchModeEnum.Dates)
+            {
+                <b>1回の検索は@(Limiter.MaxDatesPerSearch)日まで</b>
+            }
+            else
+            {
+                <b>1回の検索は@(Limiter.MaxRoomsPerSearch)ルームまで</b>
+            }／
             <b>検索の間隔は@(Limiter.CooldownSeconds)秒以上</b>／
             <b>1時間あたり@(Limiter.HourlyRequestLimit)件まで</b>。
             <span class="rate-remain @(Limiter.RemainingHourly == 0 ? "is-empty" : "")">
@@ -146,7 +195,7 @@ else
                 </div>
             </div>
             <label class="filter-line">
-                <input type="checkbox" @bind="onlyAvailable" /> 空きありのルームのみ表示
+                <input type="checkbox" @bind="onlyAvailable" /> 空きありのみ表示
             </label>
             <label class="filter-line">
                 <input type="checkbox" @bind="showFull" /> 満枠の時間も表示
@@ -172,9 +221,9 @@ else
             {
                 <div class="pref-break"></div>
             }
-            <div class="room-card" @key="card.Room.CenterId">
+            <div class="room-card" @key="card.Room.Key">
                 <div class="room-head">
-                    <span class="room-name">@card.Room.CenterName</span>
+                    <span class="room-name">@card.Room.Title</span>
                     <a class="room-link" href="@card.Room.ReserveUrl"
                        @onclick="() => Browser.Open(card.Room.ReserveUrl)" @onclick:preventDefault="true">
                         予約ページ <i class="fa-solid fa-arrow-up-right-from-square"></i>
@@ -230,6 +279,10 @@ else
 <CenterPicker @ref="picker" RegionGroups="Master.RegionGroups" SecPerRoom="secPerRoom"
               MaxRooms="Limiter.MaxRoomsPerSearch" OnApply="ApplyPicker" />
 
+<!-- 対象日ピッカー（日付横断） -->
+<DatePicker @ref="datePicker" SecPerRoom="secPerRoom"
+            MaxDates="Limiter.MaxDatesPerSearch" OnApply="ApplyDatePicker" />
+
 <!-- 選択セットの保存（名前入力） -->
 <div class="modal-overlay @(presetSaveShow ? "show" : "")" @onclick="ClosePresetSave">
     <div class="modal-box" @onclick:stopPropagation="true">
@@ -277,6 +330,7 @@ else
     };
 
     private CenterPicker? picker;
+    private DatePicker? datePicker;
     private Dialogs? dialogs;
     private DotNetObjectReference<MainPage>? selfRef;
 
@@ -287,6 +341,12 @@ else
 
     //確定済みの選択（条件カードに出ている内容）
     private List<int> applied = [];
+
+    private BloodDonationSearchModeEnum searchMode = BloodDonationSearchModeEnum.Rooms;
+
+    //日付横断の選択（1ルーム × 複数日）
+    private int? singleCenterId;
+    private List<DateOnly> appliedDates = [];
     private DateOnly? targetDate;
     private List<PresetItem> presets = [];
     private double secPerRoom = DefaultSecPerRoom;
@@ -359,8 +419,52 @@ else
         var today = DateOnly.FromDateTime(DateTime.Today);
         targetDate = settings.TargetDate is DateOnly d && d > today ? d : today;
 
+        searchMode = settings.SearchMode;
+        singleCenterId = settings.SingleCenterId is int id && Master.Contains(id) ? id : null;
+        //過ぎた日は選べないので落とす
+        appliedDates = settings.TargetDates.Where(x => x >= today).Distinct().Order().ToList();
+
         presets = settings.Presets;
         secPerRoom = settings.SecPerRoom ?? DefaultSecPerRoom;
+    }
+
+    // ── 検索方向の切替 ──────────────────────────────────────────
+
+    private void SetMode(BloodDonationSearchModeEnum mode)
+    {
+        if (searchMode == mode) return;
+        searchMode = mode;
+        //モードを変えると結果の意味が変わるので消す
+        results.Clear();
+        showProgress = false;
+        SaveCondition();
+    }
+
+    // ── 日付横断の献血ルーム・対象日 ────────────────────────────
+
+    private string SingleCenterValue => singleCenterId?.ToString() ?? "";
+
+    private void OnSingleCenterChanged(string? value)
+    {
+        singleCenterId = string.IsNullOrEmpty(value) ? null : int.Parse(value);
+        SaveCondition();
+    }
+
+    private string DateSummaryMain => appliedDates.Count == 0 ? "未選択" : $"{appliedDates.Count}日を選択中";
+
+    private string DateSummarySub => appliedDates.Count == 0
+        ? "「変更」から対象日を選択してください"
+        : string.Join("・", appliedDates.Select(DateLabel));
+
+    private static string DateLabel(DateOnly date)
+        => date.ToString("M/d(ddd)", System.Globalization.CultureInfo.GetCultureInfo("ja-JP"));
+
+    private void OpenDatePicker() => datePicker?.Open(appliedDates);
+
+    private void ApplyDatePicker(List<DateOnly> dates)
+    {
+        appliedDates = dates;
+        SaveCondition();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -386,6 +490,7 @@ else
         if (dialogs?.IsOpen == true) { dialogs.CloseTopmost(); return; }
         if (presetSaveShow) { ClosePresetSave(); return; }
         picker?.Close();
+        datePicker?.CloseFromEscape();
         StateHasChanged();
     }
 
@@ -434,7 +539,8 @@ else
             .ToList();
     }
 
-    private void SaveCondition() => Store.SaveCondition(applied, targetDate);
+    private void SaveCondition()
+        => Store.SaveCondition(searchMode, applied, targetDate, singleCenterId, appliedDates);
 
     // ── 選択セット（プリセット） ────────────────────────────────
 
@@ -572,7 +678,8 @@ else
         string? lastPrefecture = null;
         foreach (var room in results.Where(IsCardVisible))
         {
-            cards.Add((room, lastPrefecture != null && room.Prefecture != lastPrefecture));
+            //日付横断では都道府県を持たないので折り返さない
+            cards.Add((room, room.Prefecture != null && lastPrefecture != null && room.Prefecture != lastPrefecture));
             lastPrefecture = room.Prefecture;
         }
         return cards;
@@ -624,21 +731,49 @@ else
         });
     }
 
-    private async Task SearchAsync()
+    /// <summary>
+    /// 取得対象を (献血ルーム, 日付) の並びに展開する。
+    /// ルーム横断は1日×複数ルーム、日付横断は1ルーム×複数日。
+    /// 入力に不備があればメッセージを出して null を返す。
+    /// </summary>
+    private List<(BloodDonationCenter Center, DateOnly Date)>? BuildTargets()
     {
-        if (targetDate is not DateOnly date)
+        if (searchMode == BloodDonationSearchModeEnum.Rooms)
         {
-            dialogs?.ShowMessage("対象日を入力してください。", "⚠️");
-            return;
-        }
-        if (applied.Count == 0)
-        {
-            dialogs?.ShowMessage("献血ルームを1つ以上選択してください。", "⚠️");
-            return;
+            if (targetDate is not DateOnly date)
+            {
+                dialogs?.ShowMessage("対象日を入力してください。", "⚠️");
+                return null;
+            }
+            if (applied.Count == 0)
+            {
+                dialogs?.ShowMessage("献血ルームを1つ以上選択してください。", "⚠️");
+                return null;
+            }
+            //画面で選択した順（＝ツリー順）に取得する
+            return applied.Select(Master.Find).Where(c => c != null).Select(c => (c!, date)).ToList();
         }
 
+        if (singleCenterId is not int centerId || Master.Find(centerId) is not BloodDonationCenter center)
+        {
+            dialogs?.ShowMessage("献血ルームを選択してください。", "⚠️");
+            return null;
+        }
+        if (appliedDates.Count == 0)
+        {
+            dialogs?.ShowMessage("対象日を1つ以上選択してください。", "⚠️");
+            return null;
+        }
+        return appliedDates.Order().Select(d => (center, d)).ToList();
+    }
+
+    private async Task SearchAsync()
+    {
+        var targets = BuildTargets();
+        if (targets == null) return;
+
         //先方サイトへの負荷を抑えるための制限。理由を出して止める
-        var (allowed, reason) = Limiter.CanStart(applied.Count);
+        var (allowed, reason) = Limiter.CanStart(targets.Count, searchMode);
         if (!allowed)
         {
             dialogs?.ShowMessage(reason, "🖐️");
@@ -646,14 +781,11 @@ else
             return;
         }
 
-        //画面で選択した順（＝ツリー順）に取得する
-        var targetCenters = applied.Select(Master.Find).Where(c => c != null).Select(c => c!).ToList();
-
         searching = true;
         results.Clear();
         showProgress = true;
         progressIndex = 0;
-        progressTotal = targetCenters.Count;
+        progressTotal = targets.Count;
         progressText = "取得中…";
 
         cts?.Cancel();
@@ -668,22 +800,27 @@ else
         using BloodDonationAvailabilityFetcher fetcher = new();
         try
         {
-            DateTime targetDateTime = date.ToDateTime(TimeOnly.MinValue);
-            for (int i = 0; i < targetCenters.Count; i++)
+            bool byDate = searchMode == BloodDonationSearchModeEnum.Dates;
+            for (int i = 0; i < targets.Count; i++)
             {
-                var center = targetCenters[i];
+                var (center, date) = targets[i];
+                DateTime targetDateTime = date.ToDateTime(TimeOnly.MinValue);
                 RoomResult room = new()
                 {
-                    CenterId = center.CenterId,
-                    CenterName = center.CenterName ?? "",
-                    Prefecture = string.IsNullOrWhiteSpace(center.Prefecture) ? PrefectureRegions.Other : center.Prefecture!,
+                    //日付横断では同じルームが並ぶので、日付側をキーにする
+                    Key = byDate ? date.ToString("yyyy-MM-dd") : center.CenterId.ToString(),
+                    Title = byDate ? DateLabel(date) : center.CenterName ?? "",
+                    //日付横断では都道府県の区切りは不要
+                    Prefecture = byDate
+                        ? null
+                        : string.IsNullOrWhiteSpace(center.Prefecture) ? PrefectureRegions.Other : center.Prefecture!,
                     ReserveUrl = BloodDonationAvailabilityFetcher.BuildReservePageUrl(targetDateTime, center.PlaceId ?? ""),
                     NoPlatelet = center.NoPlatelet
                 };
 
                 try
                 {
-                    //先方サイトへ実際に投げる直前に記録する（1ルーム＝1リクエスト）
+                    //先方サイトへ実際に投げる直前に記録する（1件＝1リクエスト）
                     Limiter.RecordRequest();
                     var availability = await fetcher.FetchAsync(targetDateTime, center.PlaceId ?? "", ct);
                     room.Types = BloodDonationAvailabilityFetcher.AllTypes.Select(t => new TypeResult
@@ -697,17 +834,17 @@ else
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    //1ルームの失敗で全体を止めない（先方HTML変化・一時的なエラーなど）
+                    //1件の失敗で全体を止めない（先方HTML変化・一時的なエラーなど）
                     room.Error = ex.Message;
                 }
 
                 results.Add(room);
                 fetched++;
                 progressIndex = i + 1;
-                progressText = $"{i + 1} / {targetCenters.Count} 件取得";
+                progressText = $"{i + 1} / {targets.Count} 件取得";
                 StateHasChanged();
 
-                if (i < targetCenters.Count - 1)
+                if (i < targets.Count - 1)
                 {
                     await Task.Delay(Limiter.RoomIntervalMs, ct);
                 }

@@ -1,0 +1,171 @@
+@*
+    対象日の選択（日付横断）。月カレンダーで日付をトグルして選ぶ。
+    選べる日数の上限は作者のスプレッドシート由来。
+*@
+<div class="modal-overlay @(show ? "show" : "")" @onclick="Close">
+    <div class="picker" @onclick:stopPropagation="true">
+        <div class="picker-head">
+            <span class="picker-title"><i class="fa-regular fa-calendar-days me-1"></i>対象日を選択</span>
+            <button type="button" class="picker-close" @onclick="Close">&times;</button>
+        </div>
+
+        <div class="chip-area">
+            <div class="chip-head">
+                <span class="chip-head-label">選択中</span>
+                <button type="button" class="btn-link" @onclick="() => draft.Clear()">すべて解除</button>
+            </div>
+            <div class="chips">
+                @if (draft.Count == 0)
+                {
+                    <span class="chip-empty">選択されていません</span>
+                }
+                else
+                {
+                    @foreach (var date in draft.Order())
+                    {
+                        <span class="chip">
+                            @Label(date)
+                            <button type="button" title="解除" @onclick="() => draft.Remove(date)">×</button>
+                        </span>
+                    }
+                }
+            </div>
+        </div>
+
+        <div class="tree" style="padding:10px 14px 4px;">
+            <div class="cal-nav">
+                <button type="button" title="前の月" disabled="@IsCurrentMonth" @onclick="() => MoveMonth(-1)">
+                    <i class="fa-solid fa-chevron-left"></i>
+                </button>
+                <span class="cal-title">@(calMonth.Year)年@(calMonth.Month)月</span>
+                <button type="button" title="次の月" @onclick="() => MoveMonth(1)">
+                    <i class="fa-solid fa-chevron-right"></i>
+                </button>
+            </div>
+
+            <div class="cal-grid">
+                @for (int i = 0; i < DayNames.Length; i++)
+                {
+                    <div class="cal-dow @DowClass(i)">@DayNames[i]</div>
+                }
+                @*1日が何曜日から始まるかぶんの空きマス*@
+                @for (int i = 0; i < (int)calMonth.DayOfWeek; i++)
+                {
+                    <div class="cal-cell empty"></div>
+                }
+                @foreach (var date in MonthDays())
+                {
+                    var key = date;
+                    <button type="button" class="cal-cell @DowClass((int)date.DayOfWeek) @(key == Today ? "today" : "") @(draft.Contains(key) ? "on" : "")"
+                            disabled="@(key < Today)" @onclick="() => Toggle(key)">
+                        @date.Day
+                    </button>
+                }
+            </div>
+            <div class="cal-hint">日付をクリックすると選択・解除できます</div>
+        </div>
+
+        <div class="picker-foot">
+            @if (draft.Count > MaxDates)
+            {
+                @*先方サイトへの負荷を抑えるための上限。ここを超えたら決定させない*@
+                <div class="foot-error show">
+                    1回の検索で取得できるのは@(MaxDates)日までです。
+                    @(draft.Count - MaxDates)日減らしてください。
+                </div>
+            }
+            <div class="foot-line">
+                <div class="foot-count">
+                    計 <b>@draft.Count</b> 日 / 最大 @MaxDates 日　<span class="foot-est">@EstimateText(draft.Count)</span>
+                </div>
+                <button type="button" class="btn-gray" @onclick="Close">キャンセル</button>
+                <button type="button" class="btn-red" style="padding:9px 24px;"
+                        disabled="@(draft.Count > MaxDates)" @onclick="Apply">決定</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private static readonly string[] DayNames = ["日", "月", "火", "水", "木", "金", "土"];
+
+    /// <summary>1ルームあたりの取得所要秒数。取得の目安表示に使う。</summary>
+    [Parameter]
+    public double SecPerRoom { get; set; }
+
+    /// <summary>1回の検索で選べる日数の上限（作者のスプレッドシート由来）。</summary>
+    [Parameter]
+    public int MaxDates { get; set; } = RemoteConfig.DefaultMaxDatesPerSearch;
+
+    [Parameter]
+    public EventCallback<List<DateOnly>> OnApply { get; set; }
+
+    private bool show;
+
+    //ピッカーで編集中の選択
+    private HashSet<DateOnly> draft = [];
+
+    //カレンダーに表示している月の1日
+    private DateOnly calMonth = FirstOfMonth(Today);
+
+    private static DateOnly Today => DateOnly.FromDateTime(DateTime.Today);
+
+    private static DateOnly FirstOfMonth(DateOnly date) => new(date.Year, date.Month, 1);
+
+    private bool IsCurrentMonth => calMonth == FirstOfMonth(Today);
+
+    private IEnumerable<DateOnly> MonthDays()
+        => Enumerable.Range(0, DateTime.DaysInMonth(calMonth.Year, calMonth.Month))
+                     .Select(i => calMonth.AddDays(i));
+
+    private static string DowClass(int dayOfWeek) => dayOfWeek switch
+    {
+        0 => "sun",
+        6 => "sat",
+        _ => ""
+    };
+
+    private static string Label(DateOnly date) => $"{date.Month}/{date.Day}({DayNames[(int)date.DayOfWeek]})";
+
+    private string EstimateText(int count)
+    {
+        if (count == 0) return "";
+        int sec = (int)Math.Round(count * SecPerRoom);
+        return sec < 60 ? $"取得の目安 約{sec}秒" : $"取得の目安 約{Math.Round(sec / 60.0)}分";
+    }
+
+    public void Open(IEnumerable<DateOnly> selected)
+    {
+        draft = [.. selected];
+        //選択済みがあればその最初の月から見せる
+        var first = draft.Count == 0 ? Today : draft.Min();
+        calMonth = FirstOfMonth(first < Today ? Today : first);
+        show = true;
+        StateHasChanged();
+    }
+
+    private void Close()
+    {
+        show = false;
+        StateHasChanged();
+    }
+
+    private void Toggle(DateOnly date)
+    {
+        if (!draft.Remove(date)) draft.Add(date);
+    }
+
+    private void MoveMonth(int diff) => calMonth = calMonth.AddMonths(diff);
+
+    private async Task Apply()
+    {
+        show = false;
+        await OnApply.InvokeAsync([.. draft.Order()]);
+    }
+
+    /// <summary>Escapeキーで閉じる（画面側から呼ばれる）。</summary>
+    public void CloseFromEscape()
+    {
+        if (show) Close();
+    }
+}
