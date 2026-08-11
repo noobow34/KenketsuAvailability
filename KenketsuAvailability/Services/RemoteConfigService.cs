@@ -180,7 +180,10 @@ public class RemoteConfigService
                 CenterName = Get(row, "centerName"),
                 PlaceId = placeId,
                 Prefecture = Get(row, "prefecture"),
-                NoPlatelet = ParseBool(Get(row, "noPlatelet"), false)
+                //列が無い場合・空の場合は「取り扱いあり」とみなす
+                OfferWhole400 = ParseBool(Get(row, "offerWhole400"), true),
+                OfferPpp = ParseBool(Get(row, "offerPPP"), true),
+                OfferPcppp = ParseBool(Get(row, "offerPCPPP"), true)
             });
         }
 

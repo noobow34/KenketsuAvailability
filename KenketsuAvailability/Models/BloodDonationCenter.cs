@@ -1,3 +1,5 @@
+using KenketsuAvailability.Constants;
+
 namespace KenketsuAvailability.Models;
 
 /// <summary>
@@ -15,20 +17,25 @@ public class BloodDonationCenter
     public string? Prefecture { get; set; }
 
     /// <summary>
-    /// 血小板献血の取り扱いがないルームか。
+    /// 献血種別ごとの取り扱いの有無。
     /// 先方ページは「取扱なし」も「その日満枠」も同じくタブ非活性になるため、
-    /// HTMLからは区別できない。恒常的に取り扱いがないルームだけこのフラグで持つ。
+    /// HTMLからは区別できない。恒常的な取り扱いの有無はマスタ側で持つ。
+    /// 全血のみのルーム、血小板を扱わないルームなどがあるため種別ごとに分けている。
     /// </summary>
-    public bool NoPlatelet { get; set; }
-}
+    public bool OfferWhole400 { get; set; } = true;
 
-/// <summary>献血ルームマスタのファイル形式（Data/centers.json）。</summary>
-public class CenterMasterFile
-{
-    /// <summary>マスタを書き出した日（画面に出す更新日）。</summary>
-    public string? UpdatedAt { get; set; }
+    public bool OfferPpp { get; set; } = true;
 
-    public List<BloodDonationCenter> Centers { get; set; } = [];
+    public bool OfferPcppp { get; set; } = true;
+
+    /// <summary>この献血ルームがその種別を取り扱っているか。</summary>
+    public bool Offers(BloodDonationTypeEnum bdType) => bdType switch
+    {
+        BloodDonationTypeEnum.Whole400 => OfferWhole400,
+        BloodDonationTypeEnum.PPP => OfferPpp,
+        BloodDonationTypeEnum.PCPPP => OfferPcppp,
+        _ => true,
+    };
 }
 
 /// <summary>都道府県ごとにまとめた献血ルーム（一括選択の単位）。</summary>

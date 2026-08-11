@@ -23,12 +23,6 @@ public class RoomResult
 
     public string ReserveUrl { get; set; } = string.Empty;
 
-    /// <summary>
-    /// 先方HTMLでは「血小板の取扱なし」と「その日は満枠」がどちらもタブ非活性で区別できないため、
-    /// マスタのフラグで判断する。
-    /// </summary>
-    public bool NoPlatelet { get; set; }
-
     public List<TypeResult> Types { get; set; } = [];
 
     /// <summary>取得に失敗した場合のメッセージ。成功時は null。</summary>
@@ -42,7 +36,15 @@ public class TypeResult
 
     public string Name { get; set; } = string.Empty;
 
+    /// <summary>その日その献血ルームでこの種別が選べる状態か（先方ページのタブが押せるか）。</summary>
     public bool Offered { get; set; }
+
+    /// <summary>
+    /// マスタ上、この献血ルームがこの種別を取り扱っているか。
+    /// 先方HTMLでは「取扱なし」と「その日は満枠」がどちらもタブ非活性で区別できないため、
+    /// 表示の出し分けにはこちらを使う。
+    /// </summary>
+    public bool Handled { get; set; } = true;
 
     /// <summary>空き・満枠をまとめて時間順のまま持つ。</summary>
     public List<BloodDonationSlot> Slots { get; set; } = [];
