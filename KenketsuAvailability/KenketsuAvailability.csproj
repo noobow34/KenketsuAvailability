@@ -1,0 +1,64 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <!--
+      WebView2 の WPF 版アセンブリは net5.0-windows10.0.17763.0 向けにビルドされており、
+      Windows SDK の projection（Microsoft.Windows.SDK.NET）を必要とする。
+      素の net10.0-windows だと実行時に FileNotFoundException になるため、
+      Windows SDK 付きの TFM を指定する。
+    -->
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>KenketsuAvailability</RootNamespace>
+    <AssemblyName>KenketsuAvailability</AssemblyName>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!--
+      配布は「ダウンロードしてすぐ動く単一 exe」。.NET ランタイムを同梱し、
+      wwwroot（画面のCSS/JS）も含めて1ファイルにまとめる。
+      IncludeAllContentForSelfExtract を付けないと wwwroot が exe の隣に散らばる。
+      WPF はトリミング非対応なので PublishTrimmed は使わない。
+    -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <SatelliteResourceLanguages>ja;en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AngleSharp" Version="1.7.1" />
+    <PackageReference Include="AngleSharp.XPath" Version="2.0.6" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Wpf" Version="10.0.90" />
+  </ItemGroup>
+
+  <!--
+    画面のファイル（index.html / CSS / JS と、パッケージが持ち込む blazor.webview.js）を
+    アセンブリに埋め込む。PublishSingleFile では静的Webアセットが単一ファイルに入らず
+    exe の隣に散らばってしまうため、EmbeddedWwwrootFileProvider から配れるようにしておく。
+    RelativePath には指紋のプレースホルダが入るので取り除く。
+  -->
+  <Target Name="_EmbedWwwroot" DependsOnTargets="ResolveStaticWebAssetsInputs" BeforeTargets="PrepareResourceNames">
+    <ItemGroup>
+      <!--
+        Include に %(...) を使ってバッチ処理させることで、StaticWebAsset のメタデータ
+        （RelativePath など）を引き継がない項目にする。引き継ぐと発行出力の重複と判定される。
+      -->
+      <EmbeddedResource Include="%(StaticWebAsset.Identity)">
+        <LogicalName>wwwroot/$([System.String]::Copy('%(StaticWebAsset.RelativePath)').Replace('#[.{fingerprint}]?',''))</LogicalName>
+        <!-- AssignTargetPaths は既に走り終わっているので、リソース分類のメタデータは自分で付ける -->
+        <WithCulture>false</WithCulture>
+        <Type>Non-Resx</Type>
+      </EmbeddedResource>
+    </ItemGroup>
+  </Target>
+
+</Project>

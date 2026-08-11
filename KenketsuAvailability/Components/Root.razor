@@ -1,0 +1,17 @@
+@*
+    アプリのルート。画面は1枚しかないのでルーティングは持たない。
+    デスクトップではブラウザのコンソールが見えないので、描画時の例外は画面に出す。
+*@
+<ErrorBoundary>
+    <ChildContent>
+        <MainPage />
+    </ChildContent>
+    <ErrorContent>
+        <div class="container-fluid py-3">
+            <div class="section-card">
+                <div class="section-title"><i class="fa-solid fa-triangle-exclamation me-1"></i>エラーが発生しました</div>
+                <pre style="white-space:pre-wrap; font-size:0.72rem; color:#c0392b; margin:0;">@context.ToString()</pre>
+            </div>
+        </div>
+    </ErrorContent>
+</ErrorBoundary>

@@ -1,0 +1,748 @@
+@*
+    献血空き横断検索の画面。
+    起動時に作者のスプレッドシートから設定と献血ルーム一覧を読み込み、
+    使用可能フラグが落ちていれば何もできない状態にする。
+*@
+@using System.Diagnostics
+@implements IAsyncDisposable
+@inject RemoteConfigService Remote
+@inject SettingsStore Store
+@inject RateLimiter Limiter
+@inject ExternalBrowser Browser
+@inject IJSRuntime JS
+
+<div class="container-fluid py-3" style="max-width:1400px;">
+
+    <div class="d-flex align-items-center mb-3">
+        <span class="page-title"><i class="fa-solid fa-table-list me-2"></i>献血空き横断検索</span>
+    </div>
+
+@if (Remote.Status == RemoteConfigStatus.Loading)
+{
+    <div class="section-card state-card">
+        <div class="state-icon"><i class="fa-solid fa-circle-notch fa-spin"></i></div>
+        <div class="state-title">設定を読み込んでいます…</div>
+        <div class="state-text">最新の献血ルーム一覧とお知らせを取得しています。</div>
+    </div>
+}
+else if (Remote.Status == RemoteConfigStatus.Error)
+{
+    <div class="section-card state-card is-error">
+        <div class="state-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+        <div class="state-title">設定を読み込めませんでした</div>
+        <div class="state-text">@Remote.ErrorMessage</div>
+        <div class="state-text">設定を読み込めない間は検索できません。</div>
+        <div class="state-actions">
+            <button type="button" class="btn-red" disabled="@reloading" @onclick="ReloadAsync">
+                <i class="fa-solid fa-rotate-right me-1"></i>再試行
+            </button>
+        </div>
+    </div>
+}
+else if (!Remote.Config.Enabled)
+{
+    @*作者が使用可能フラグを落とした状態。理由はお知らせで伝える*@
+    <div class="section-card state-card is-stopped">
+        <div class="state-icon"><i class="fa-solid fa-circle-pause"></i></div>
+        <div class="state-title">現在このアプリは利用できません</div>
+        <div class="state-text">作者により一時的に停止されています。</div>
+    </div>
+    <AuthorMessage Config="Remote.Config" />
+    <div class="state-actions" style="justify-content:center;">
+        <button type="button" class="btn-gray" disabled="@reloading" @onclick="ReloadAsync">
+            <i class="fa-solid fa-rotate-right me-1"></i>状態を再確認
+        </button>
+    </div>
+}
+else
+{
+    <AuthorMessage Config="Remote.Config" />
+
+    <!-- 検索条件 -->
+    <div class="section-card">
+        <div class="cond-row">
+            <div class="cond-date">
+                <label class="form-label-sm">対象日</label>
+                <input type="date" class="form-ctrl w-date"
+                       @bind="targetDate" @bind:format="yyyy-MM-dd" @bind:after="SaveCondition"
+                       min="@DateOnly.FromDateTime(DateTime.Today).ToString("yyyy-MM-dd")" />
+            </div>
+
+            <div class="cond-preset">
+                <label class="form-label-sm">条件セット</label>
+                <div class="preset-row">
+                    <select class="form-ctrl w-preset" @key="presetSelectKey"
+                            @bind:get="PresetSelectValue" @bind:set="OnPresetSelectChanged">
+                        <option value="">@(presets.Count == 0 ? "（セットなし）" : "（未保存の条件）")</option>
+                        @foreach (var preset in presets)
+                        {
+                            <option value="@preset.Id">@preset.Name（@preset.CenterIds.Count）</option>
+                        }
+                        <option value="@SaveOption">＋ 現在の選択を保存…</option>
+                    </select>
+                    <button type="button" class="btn-icon" title="このセットを削除"
+                            disabled="@(PresetSelectValue.Length == 0)" @onclick="DeletePreset">
+                        <i class="fa-regular fa-trash-can"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="cond-centers">
+                <label class="form-label-sm">献血ルーム</label>
+                <div class="summary-box">
+                    <div class="summary-text">
+                        <span class="summary-main @(applied.Count == 0 ? "is-empty" : "")">@SummaryMain</span>
+                        <span class="summary-sub">@SummarySub</span>
+                    </div>
+                    <button type="button" class="btn-outline" @onclick="OpenPicker">変更</button>
+                </div>
+            </div>
+
+            <div class="cond-action">
+                <button type="button" class="btn-red" disabled="@(searching || CooldownRemaining > 0)" @onclick="SearchAsync">
+                    @if (CooldownRemaining > 0)
+                    {
+                        <i class="fa-regular fa-clock me-1"></i>
+                        @($"あと{CooldownRemaining}秒")
+                    }
+                    else
+                    {
+                        <i class="fa-solid fa-magnifying-glass me-1"></i>
+                        <text>空き状況を取得</text>
+                    }
+                </button>
+            </div>
+        </div>
+
+        @*一般配布するため、先方サイトへの負荷を抑えている旨と現在の残枠を常に見せておく*@
+        <div class="rate-note">
+            <i class="fa-solid fa-hand me-1"></i>
+            日本赤十字社のサイトに負荷をかけないよう、アクセスを制限しています。
+            <b>1件ずつ@(Limiter.RoomIntervalMs / 1000.0)秒あけて順番に取得</b>／
+            <b>1回の検索は@(Limiter.MaxRoomsPerSearch)ルームまで</b>／
+            <b>検索の間隔は@(Limiter.CooldownSeconds)秒以上</b>／
+            <b>1時間あたり@(Limiter.HourlyRequestLimit)件まで</b>。
+            <span class="rate-remain @(Limiter.RemainingHourly == 0 ? "is-empty" : "")">
+                この1時間の残り @Limiter.RemainingHourly / @Limiter.HourlyRequestLimit 件
+            </span>
+        </div>
+    </div>
+
+    <!-- 表示切替（取得前から設定できるよう常時表示） -->
+    <div class="section-card">
+        <div class="filter-bar">
+            <div class="type-tabs">
+                <div class="tab-group">
+                    <span class="tab-group-label">まとめて</span>
+                    <button type="button" class="type-tab tab-combo @Active("all")" @onclick='() => currentType = "all"'>全種</button>
+                    <button type="button" class="type-tab tab-combo @Active("ComponentAll")" @onclick='() => currentType = "ComponentAll"'>成分全て</button>
+                </div>
+                <span class="tab-divider"></span>
+                <div class="tab-group">
+                    <span class="tab-group-label">単一種別</span>
+                    <button type="button" class="type-tab @Active("Whole400")" @onclick='() => currentType = "Whole400"'>400</button>
+                    <button type="button" class="type-tab @Active("PPP")" @onclick='() => currentType = "PPP"'>血漿</button>
+                    <button type="button" class="type-tab @Active("PCPPP")" @onclick='() => currentType = "PCPPP"'>血小板</button>
+                </div>
+            </div>
+            <label class="filter-line">
+                <input type="checkbox" @bind="onlyAvailable" /> 空きありのルームのみ表示
+            </label>
+            <label class="filter-line">
+                <input type="checkbox" @bind="showFull" /> 満枠の時間も表示
+            </label>
+        </div>
+    </div>
+
+    <!-- 進捗 -->
+    @if (showProgress)
+    {
+        <div>
+            <div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:@(ProgressPercent)%;"></div></div>
+            <div class="progress-line">@progressText</div>
+        </div>
+    }
+
+    <!-- 結果 -->
+    <div id="resultArea" class="@(showFull ? "show-full" : "")">
+        @foreach (var card in VisibleCards())
+        {
+            @*都道府県の変わり目に改行を入れ、以降のカードを次の行から並べる*@
+            if (card.Break)
+            {
+                <div class="pref-break"></div>
+            }
+            <div class="room-card" @key="card.Room.CenterId">
+                <div class="room-head">
+                    <span class="room-name">@card.Room.CenterName</span>
+                    <a class="room-link" href="@card.Room.ReserveUrl"
+                       @onclick="() => Browser.Open(card.Room.ReserveUrl)" @onclick:preventDefault="true">
+                        予約ページ <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                    </a>
+                </div>
+
+                @if (card.Room.Error != null)
+                {
+                    <div class="room-error"><i class="fa-solid fa-triangle-exclamation me-1"></i>@card.Room.Error</div>
+                }
+                else
+                {
+                    @foreach (var type in card.Room.Types.Where(IsRowVisible))
+                    {
+                        <div class="type-row">
+                            <div class="type-label">@TypeLabel(type)</div>
+                            <div class="slot-wrap">
+                                @*満枠の枠も常にDOMには入れておき、表示切替はCSSに任せる（並びは時間順のまま）*@
+                                @foreach (var slot in type.Slots)
+                                {
+                                    <span class="slot @(slot.Available ? "" : "slot-full")">@slot.Time</span>
+                                }
+                                @*空きなしの行は「満枠 N」を出しても情報が重複するだけなので出さない*@
+                                @if (type.AvailableCount > 0 && type.FullCount > 0)
+                                {
+                                    <span class="slot-full-count">満枠 @type.FullCount</span>
+                                }
+                                @{
+                                    string status = SlotStatus(card.Room, type);
+                                }
+                                @if (status.Length > 0)
+                                {
+                                    <span class="type-status">@status</span>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+        }
+    </div>
+
+    <div class="d-flex justify-content-end mt-3">
+        <span class="app-foot">
+            献血ルーム @Master.All.Count 件（起動時に取得）
+        </span>
+    </div>
+}
+
+</div>
+
+<!-- 献血ルーム選択ピッカー -->
+<CenterPicker @ref="picker" RegionGroups="Master.RegionGroups" SecPerRoom="secPerRoom"
+              MaxRooms="Limiter.MaxRoomsPerSearch" OnApply="ApplyPicker" />
+
+<!-- 選択セットの保存（名前入力） -->
+<div class="modal-overlay @(presetSaveShow ? "show" : "")" @onclick="ClosePresetSave">
+    <div class="modal-box" @onclick:stopPropagation="true">
+        <div style="font-size:0.9rem; font-weight:700; color:#c0392b; margin-bottom:10px;">
+            <i class="fa-regular fa-bookmark me-1"></i>現在の選択をセットとして保存
+        </div>
+        <div style="font-size:0.78rem; color:#888; margin-bottom:8px;">@applied.Count 件のルームを保存します</div>
+        <input type="text" id="presetNameInput" class="form-ctrl" maxlength="@SettingsStore.PresetNameMaxLength"
+               placeholder="例：自宅周辺 / 出張:大阪"
+               @bind="presetName" @bind:event="oninput" @onkeydown="OnPresetNameKeyDown" />
+        @if (presetSaveError.Length > 0)
+        {
+            <div style="font-size:0.72rem; color:#c0392b; margin-top:6px;">@presetSaveError</div>
+        }
+        <div class="modal-footer-btns">
+            <button type="button" class="btn-gray" @onclick="ClosePresetSave">キャンセル</button>
+            <button type="button" class="btn-red" style="padding:9px 22px;" @onclick="SavePreset">保存</button>
+        </div>
+    </div>
+</div>
+
+<Dialogs @ref="dialogs" />
+
+@code {
+    /// <summary>1ルームあたりの取得時間の暫定値（ウェイト0.3秒＋取得1.2秒）。実測値が貯まるまで使う。</summary>
+    private const double DefaultSecPerRoom = 1.5;
+
+    private const string SaveOption = "__save";
+
+    /// <summary>タブごとの表示対象種別。null は全種別。</summary>
+    private static readonly Dictionary<string, BloodDonationTypeEnum[]?> TypeFilters = new()
+    {
+        ["all"] = null,
+        ["Whole400"] = [BloodDonationTypeEnum.Whole400],
+        ["PPP"] = [BloodDonationTypeEnum.PPP],
+        ["PCPPP"] = [BloodDonationTypeEnum.PCPPP],
+        ["ComponentAll"] = [BloodDonationTypeEnum.PPP, BloodDonationTypeEnum.PCPPP],
+    };
+
+    private static readonly Dictionary<BloodDonationTypeEnum, string> TypeLabels = new()
+    {
+        [BloodDonationTypeEnum.Whole400] = "400",
+        [BloodDonationTypeEnum.PPP] = "血漿",
+        [BloodDonationTypeEnum.PCPPP] = "血小板",
+    };
+
+    private CenterPicker? picker;
+    private Dialogs? dialogs;
+    private DotNetObjectReference<MainPage>? selfRef;
+
+    /// <summary>スプレッドシートから読み込んだ献血ルーム。</summary>
+    private CenterMaster Master => Remote.Centers;
+
+    private bool reloading;
+
+    //確定済みの選択（条件カードに出ている内容）
+    private List<int> applied = [];
+    private DateOnly? targetDate;
+    private List<PresetItem> presets = [];
+    private double secPerRoom = DefaultSecPerRoom;
+
+    //初期選択はまとめタブの「成分全て」
+    private string currentType = "ComponentAll";
+    private bool onlyAvailable;
+    private bool showFull = true;
+
+    private readonly List<RoomResult> results = [];
+    private bool searching;
+    private bool showProgress;
+    private string progressText = "";
+    private int progressIndex;
+    private int progressTotal;
+    private CancellationTokenSource? cts;
+
+    //クールダウンの残り秒数を1秒ごとに描き替えるためのループが動いているか
+    private bool cooldownTicking;
+
+    private bool presetSaveShow;
+    private string presetName = "";
+    private string presetSaveError = "";
+    private bool focusPresetName;
+
+    //select は値が変わらないと DOM に反映されないため、明示的に作り直したいときにキーを進める
+    private int presetSelectKey;
+    //明示的に選択状態にしたいセット（保存直後・適用直後）
+    private int? presetSelectOverride;
+
+    protected override async Task OnInitializedAsync()
+    {
+        //ここで読めなければ何もさせない。使用可能フラグを効かせるための割り切り
+        await Remote.LoadAsync();
+        if (Remote.Status == RemoteConfigStatus.Ready)
+        {
+            InitializeFromSettings();
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        if (reloading) return;
+        reloading = true;
+        try
+        {
+            await Remote.LoadAsync();
+            if (Remote.Status == RemoteConfigStatus.Ready)
+            {
+                InitializeFromSettings();
+            }
+        }
+        finally
+        {
+            reloading = false;
+        }
+    }
+
+    /// <summary>端末に保存してある前回の検索条件を画面に載せる。ルーム一覧が揃ってから呼ぶ。</summary>
+    private void InitializeFromSettings()
+    {
+        var settings = Store.Settings;
+
+        //削除されたルームのIDが残っていても無視する
+        applied = settings.CenterIds.Where(Master.Contains).ToList();
+        //ツリー順に揃えておく（結果表示の都道府県ごとの改行と一致させるため）
+        applied = OrderByTree(applied);
+
+        //前回日付が過ぎていたら当日にする（対象日は当日以降しか選べないため）
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        targetDate = settings.TargetDate is DateOnly d && d > today ? d : today;
+
+        presets = settings.Presets;
+        secPerRoom = settings.SecPerRoom ?? DefaultSecPerRoom;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            selfRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("kenketsu.registerEscape", selfRef);
+            //前回の起動中に検索していた場合、クールダウンが残ったまま起動することがある
+            StartCooldownTicker();
+        }
+        if (focusPresetName)
+        {
+            focusPresetName = false;
+            await JS.InvokeVoidAsync("kenketsu.focus", "presetNameInput");
+        }
+    }
+
+    [JSInvokable]
+    public void OnEscape()
+    {
+        //手前に出ているものから閉じる
+        if (dialogs?.IsOpen == true) { dialogs.CloseTopmost(); return; }
+        if (presetSaveShow) { ClosePresetSave(); return; }
+        picker?.Close();
+        StateHasChanged();
+    }
+
+    // ── 条件カードのサマリ ──────────────────────────────────────
+
+    private string SummaryMain => applied.Count == 0 ? "未選択" : $"{applied.Count}件を選択中";
+
+    private string SummarySub
+    {
+        get
+        {
+            if (applied.Count == 0) return "「変更」から献血ルームを選択してください";
+            //内訳は都道府県ごとの件数を多い順に
+            var byPref = applied
+                .Select(Master.Find)
+                .Where(c => c != null)
+                .GroupBy(c => string.IsNullOrWhiteSpace(c!.Prefecture) ? PrefectureRegions.Other : c.Prefecture!)
+                .Select(g => (Pref: g.Key, Count: g.Count()))
+                .OrderByDescending(x => x.Count)
+                .Select(x => $"{x.Pref} {x.Count}");
+            return string.Join("・", byPref);
+        }
+    }
+
+    // ── 献血ルームの選択 ────────────────────────────────────────
+
+    private void OpenPicker() => picker?.Open(applied);
+
+    private void ApplyPicker(List<int> centerIds)
+    {
+        applied = centerIds;
+        //中身が一致するセットがあればそれを選択中に、なければ「（未保存の条件）」に戻す
+        presetSelectOverride = null;
+        presetSelectKey++;
+        SaveCondition();
+    }
+
+    /// <summary>選択IDをツリー順（地方＞都道府県＞CenterId）に並べ直す。</summary>
+    private List<int> OrderByTree(IEnumerable<int> ids)
+    {
+        var set = ids.ToHashSet();
+        return Master.RegionGroups
+            .SelectMany(r => r.PrefectureGroups.SelectMany(p => p.Centers))
+            .Where(c => set.Contains(c.CenterId))
+            .Select(c => c.CenterId)
+            .ToList();
+    }
+
+    private void SaveCondition() => Store.SaveCondition(applied, targetDate);
+
+    // ── 選択セット（プリセット） ────────────────────────────────
+
+    private string PresetSelectValue => (presetSelectOverride ?? MatchedPresetId())?.ToString() ?? "";
+
+    /// <summary>いまの選択と中身が完全一致するセット。</summary>
+    private int? MatchedPresetId()
+    {
+        var current = applied.Order().ToList();
+        var hit = presets.FirstOrDefault(p => p.CenterIds.Order().SequenceEqual(current));
+        return hit?.Id;
+    }
+
+    private async Task OnPresetSelectChanged(string? value)
+    {
+        if (value == SaveOption)
+        {
+            //保存メニューは選択状態として残さない
+            presetSelectKey++;
+            await OpenPresetSave();
+            return;
+        }
+        if (string.IsNullOrEmpty(value))
+        {
+            //プレースホルダは選べない扱い。元の選択状態に戻す
+            presetSelectKey++;
+            return;
+        }
+
+        var preset = presets.FirstOrDefault(p => p.Id == int.Parse(value));
+        if (preset == null) return;
+
+        //マスタから消えたルームがセットに残っていても無視する
+        applied = OrderByTree(preset.CenterIds.Where(Master.Contains));
+        presetSelectOverride = preset.Id;
+        SaveCondition();
+    }
+
+    private async Task OpenPresetSave()
+    {
+        if (applied.Count == 0)
+        {
+            dialogs?.ShowMessage("保存する献血ルームが選択されていません。", "⚠️");
+            return;
+        }
+        var current = presets.FirstOrDefault(p => p.Id == MatchedPresetId());
+        presetName = current?.Name ?? "";
+        presetSaveError = "";
+        presetSaveShow = true;
+        focusPresetName = true;
+        await Task.CompletedTask;
+    }
+
+    private void ClosePresetSave()
+    {
+        presetSaveShow = false;
+        presetSelectKey++;
+    }
+
+    private async Task OnPresetNameKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SavePreset();
+    }
+
+    private async Task SavePreset()
+    {
+        string name = presetName.Trim();
+        if (name.Length == 0)
+        {
+            presetSaveError = "セット名を入力してください。";
+            return;
+        }
+
+        //同名は上書き
+        if (presets.Any(p => p.Name == name)
+            && dialogs != null
+            && !await dialogs.ConfirmAsync($"「{name}」は既にあります。\n上書きしますか？", "💾"))
+        {
+            return;
+        }
+
+        var (error, savedId) = Store.SavePreset(name, applied);
+        if (error != null)
+        {
+            presetSaveError = error;
+            return;
+        }
+
+        presets = Store.Settings.Presets;
+        presetSaveShow = false;
+        presetSelectOverride = savedId;
+        presetSelectKey++;
+        dialogs?.ShowMessage($"「{name}」を保存しました。", "💾");
+    }
+
+    private async Task DeletePreset()
+    {
+        if (PresetSelectValue.Length == 0) return;
+        var preset = presets.FirstOrDefault(p => p.Id == int.Parse(PresetSelectValue));
+        if (preset == null) return;
+        if (dialogs == null || !await dialogs.ConfirmAsync($"セット「{preset.Name}」を削除します。\nよろしいですか？", "🗑️")) return;
+
+        Store.DeletePreset(preset.Id);
+        presets = Store.Settings.Presets;
+        presetSelectOverride = null;
+        presetSelectKey++;
+    }
+
+    // ── 種別タブ・絞り込み ──────────────────────────────────────
+
+    private string Active(string type) => currentType == type ? "active" : "";
+
+    private static string TypeLabel(TypeResult type)
+        => TypeLabels.TryGetValue(type.Key, out string? label) ? label : type.Name;
+
+    private bool IsRowVisible(TypeResult type)
+    {
+        var targets = TypeFilters[currentType];
+        return targets == null || targets.Contains(type.Key);
+    }
+
+    private bool IsCardVisible(RoomResult room)
+    {
+        if (!onlyAvailable || room.Error != null) return true;
+        return room.Types.Any(t => IsRowVisible(t) && t.AvailableCount > 0);
+    }
+
+    /// <summary>
+    /// 表示するカードと、その直前に都道府県の改行を挟むかどうか。
+    /// 絞り込みで隠れたカードは飛ばすので、先頭・末尾に空行が残らない。
+    /// </summary>
+    private List<(RoomResult Room, bool Break)> VisibleCards()
+    {
+        List<(RoomResult, bool)> cards = [];
+        string? lastPrefecture = null;
+        foreach (var room in results.Where(IsCardVisible))
+        {
+            cards.Add((room, lastPrefecture != null && room.Prefecture != lastPrefecture));
+            lastPrefecture = room.Prefecture;
+        }
+        return cards;
+    }
+
+    /// <summary>
+    /// 先方ページはタブ非活性が「取扱なし」「その日は満枠」の両方で起きて区別できないため、
+    /// 既定は「空きなし」とし、マスタで血小板なしフラグが立つルームだけ「取扱なし」にする。
+    /// </summary>
+    private static string SlotStatus(RoomResult room, TypeResult type)
+    {
+        if (!type.Offered)
+        {
+            return (type.Key == BloodDonationTypeEnum.PCPPP && room.NoPlatelet) ? "取扱なし" : "空きなし";
+        }
+        return type.AvailableCount == 0 ? "空きなし" : "";
+    }
+
+    // ── 取得 ────────────────────────────────────────────────────
+
+    private int ProgressPercent => progressTotal == 0 ? 0 : (int)Math.Round(progressIndex * 100.0 / progressTotal);
+
+    private int CooldownRemaining => Limiter.CooldownRemainingSeconds;
+
+    /// <summary>クールダウン中は「あとN秒」を毎秒描き替える。0になったら止める。</summary>
+    private void StartCooldownTicker()
+    {
+        if (cooldownTicking || CooldownRemaining == 0) return;
+        cooldownTicking = true;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                while (CooldownRemaining > 0)
+                {
+                    await Task.Delay(500);
+                    await InvokeAsync(StateHasChanged);
+                }
+                await InvokeAsync(StateHasChanged);
+            }
+            catch (ObjectDisposedException)
+            {
+                //画面が閉じられた
+            }
+            finally
+            {
+                cooldownTicking = false;
+            }
+        });
+    }
+
+    private async Task SearchAsync()
+    {
+        if (targetDate is not DateOnly date)
+        {
+            dialogs?.ShowMessage("対象日を入力してください。", "⚠️");
+            return;
+        }
+        if (applied.Count == 0)
+        {
+            dialogs?.ShowMessage("献血ルームを1つ以上選択してください。", "⚠️");
+            return;
+        }
+
+        //先方サイトへの負荷を抑えるための制限。理由を出して止める
+        var (allowed, reason) = Limiter.CanStart(applied.Count);
+        if (!allowed)
+        {
+            dialogs?.ShowMessage(reason, "🖐️");
+            StartCooldownTicker();
+            return;
+        }
+
+        //画面で選択した順（＝ツリー順）に取得する
+        var targetCenters = applied.Select(Master.Find).Where(c => c != null).Select(c => c!).ToList();
+
+        searching = true;
+        results.Clear();
+        showProgress = true;
+        progressIndex = 0;
+        progressTotal = targetCenters.Count;
+        progressText = "取得中…";
+
+        cts?.Cancel();
+        cts?.Dispose();
+        cts = new CancellationTokenSource();
+        var ct = cts.Token;
+
+        var stopwatch = Stopwatch.StartNew();
+        int fetched = 0;
+        bool completed = false;
+
+        using BloodDonationAvailabilityFetcher fetcher = new();
+        try
+        {
+            DateTime targetDateTime = date.ToDateTime(TimeOnly.MinValue);
+            for (int i = 0; i < targetCenters.Count; i++)
+            {
+                var center = targetCenters[i];
+                RoomResult room = new()
+                {
+                    CenterId = center.CenterId,
+                    CenterName = center.CenterName ?? "",
+                    Prefecture = string.IsNullOrWhiteSpace(center.Prefecture) ? PrefectureRegions.Other : center.Prefecture!,
+                    ReserveUrl = BloodDonationAvailabilityFetcher.BuildReservePageUrl(targetDateTime, center.PlaceId ?? ""),
+                    NoPlatelet = center.NoPlatelet
+                };
+
+                try
+                {
+                    //先方サイトへ実際に投げる直前に記録する（1ルーム＝1リクエスト）
+                    Limiter.RecordRequest();
+                    var availability = await fetcher.FetchAsync(targetDateTime, center.PlaceId ?? "", ct);
+                    room.Types = BloodDonationAvailabilityFetcher.AllTypes.Select(t => new TypeResult
+                    {
+                        Key = t,
+                        Name = t.GetDescription(),
+                        Offered = availability.Types[t].Offered,
+                        //空き・満枠をまとめて時間順のまま持つ
+                        Slots = availability.Types[t].Slots
+                    }).ToList();
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    //1ルームの失敗で全体を止めない（先方HTML変化・一時的なエラーなど）
+                    room.Error = ex.Message;
+                }
+
+                results.Add(room);
+                fetched++;
+                progressIndex = i + 1;
+                progressText = $"{i + 1} / {targetCenters.Count} 件取得";
+                StateHasChanged();
+
+                if (i < targetCenters.Count - 1)
+                {
+                    await Task.Delay(Limiter.RoomIntervalMs, ct);
+                }
+            }
+            completed = true;
+            progressText = "取得完了";
+        }
+        catch (OperationCanceledException)
+        {
+            progressText = "取得を中断しました。";
+        }
+        finally
+        {
+            stopwatch.Stop();
+            searching = false;
+
+            //中断していてもリクエストは投げているので、クールダウンは必ず開始する
+            Limiter.FinishSearch();
+
+            //最後まで取得できたときだけ実測値として採用する
+            if (completed && fetched > 0)
+            {
+                Store.SaveFetchSpeed(stopwatch.Elapsed.TotalSeconds / fetched);
+                secPerRoom = Store.Settings.SecPerRoom ?? DefaultSecPerRoom;
+            }
+            StateHasChanged();
+            StartCooldownTicker();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        cts?.Cancel();
+        cts?.Dispose();
+        selfRef?.Dispose();
+        await ValueTask.CompletedTask;
+    }
+}

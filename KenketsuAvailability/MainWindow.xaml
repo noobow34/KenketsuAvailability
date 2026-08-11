@@ -1,0 +1,17 @@
+<Window x:Class="KenketsuAvailability.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:blazor="clr-namespace:Microsoft.AspNetCore.Components.WebView.Wpf;assembly=Microsoft.AspNetCore.Components.WebView.Wpf"
+        xmlns:local="clr-namespace:KenketsuAvailability"
+        xmlns:components="clr-namespace:KenketsuAvailability.Components"
+        Title="献血空き横断検索" Height="900" Width="1280" WindowStartupLocation="CenterScreen">
+    <Grid>
+        <local:EmbeddedBlazorWebView x:Name="blazorWebView"
+                                     HostPage="wwwroot\index.html"
+                                     Services="{DynamicResource services}">
+            <blazor:BlazorWebView.RootComponents>
+                <blazor:RootComponent Selector="#app" ComponentType="{x:Type components:Root}" />
+            </blazor:BlazorWebView.RootComponents>
+        </local:EmbeddedBlazorWebView>
+    </Grid>
+</Window>

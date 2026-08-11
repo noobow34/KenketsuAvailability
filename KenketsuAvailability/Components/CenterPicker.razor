@@ -1,0 +1,288 @@
+@*
+    献血ルームの選択ピッカー（地方 → 都道府県 → ルームの3階層）。
+    全国のルームをそのまま並べると長すぎるため、地方単位で折りたためるようにしている。
+*@
+@inject IJSRuntime JS
+
+<div class="modal-overlay @(IsOpen ? "show" : "")" id="pickerModal" @onclick="Close">
+    <div class="picker" @onclick:stopPropagation="true">
+        <div class="picker-head">
+            <span class="picker-title"><i class="fa-solid fa-hospital me-1"></i>献血ルームを選択</span>
+            <button type="button" class="picker-close" @onclick="Close">&times;</button>
+        </div>
+
+        <div class="picker-search">
+            <i class="fa-solid fa-magnifying-glass search-icon"></i>
+            <input type="text" id="pickerSearch" class="form-ctrl" placeholder="ルーム名・都道府県で検索"
+                   @bind="Keyword" @bind:event="oninput" />
+        </div>
+
+        <div class="chip-area">
+            <div class="chip-head">
+                <span class="chip-head-label">選択中</span>
+                <button type="button" class="btn-link" @onclick="ClearAll">すべて解除</button>
+            </div>
+            <div class="chips">
+                @if (draft.Count == 0)
+                {
+                    <span class="chip-empty">選択されていません</span>
+                }
+                else
+                {
+                    @foreach (var room in allRooms.Where(r => draft.Contains(r.CenterId)))
+                    {
+                        @*チップは横幅を食うので、共通の接尾辞「献血ルーム」は落として表示する*@
+                        <span class="chip" title="@room.CenterName">
+                            @StripSuffix(room.CenterName)
+                            <button type="button" title="解除" @onclick="() => Toggle([room], false)">×</button>
+                        </span>
+                    }
+                }
+            </div>
+        </div>
+
+        <div class="tree" id="pickerTree">
+            @{
+                var visibleRegions = BuildVisibleTree();
+            }
+            @if (visibleRegions.Count == 0)
+            {
+                <div class="tree-empty">該当する献血ルームがありません</div>
+            }
+            else
+            {
+                @foreach (var region in visibleRegions)
+                {
+                    @*一括選択・件数は「いま表示されているルーム」を対象にする（検索で絞った状態で地方を選んでも隠れた分は動かさない）*@
+                    var regionRooms = region.Prefectures.SelectMany(p => p.Hits).ToList();
+                    var regionSelected = regionRooms.Count(r => draft.Contains(r.CenterId));
+                    var regionOpen = Keyword.Length > 0 || expandedRegions.Contains(region.Name);
+
+                    <div class="node node-region" @onclick="() => ToggleExpand(expandedRegions, region.Name)">
+                        <input type="checkbox"
+                               checked="@IsAllChecked(regionSelected, regionRooms.Count)"
+                               data-indeterminate="@Indeterminate(regionSelected, regionRooms.Count)"
+                               @onclick="() => Toggle(regionRooms, !IsAllChecked(regionSelected, regionRooms.Count))"
+                               @onclick:stopPropagation="true" />
+                        <span class="node-name">@region.Name</span>
+                        <span class="node-count @(regionSelected > 0 ? "on" : "")">@regionSelected/@regionRooms.Count</span>
+                        <span class="caret">@(regionOpen ? "▾" : "▸")</span>
+                    </div>
+
+                    if (regionOpen)
+                    {
+                        foreach (var pref in region.Prefectures)
+                        {
+                            var prefSelected = pref.Hits.Count(r => draft.Contains(r.CenterId));
+                            var prefOpen = Keyword.Length > 0 || expandedPrefs.Contains(pref.Name);
+
+                            <div class="node node-pref" @onclick="() => ToggleExpand(expandedPrefs, pref.Name)">
+                                <input type="checkbox"
+                                       checked="@IsAllChecked(prefSelected, pref.Hits.Count)"
+                                       data-indeterminate="@Indeterminate(prefSelected, pref.Hits.Count)"
+                                       @onclick="() => Toggle(pref.Hits, !IsAllChecked(prefSelected, pref.Hits.Count))"
+                                       @onclick:stopPropagation="true" />
+                                <span class="node-name">@pref.Name</span>
+                                <span class="node-count @(prefSelected > 0 ? "on" : "")">@prefSelected/@pref.Hits.Count</span>
+                                <span class="caret">@(prefOpen ? "▾" : "▸")</span>
+                            </div>
+
+                            if (prefOpen)
+                            {
+                                foreach (var room in pref.Hits)
+                                {
+                                    var selected = draft.Contains(room.CenterId);
+                                    <div class="node node-room" @key="room.CenterId" @onclick="() => Toggle([room], !selected)">
+                                        <input type="checkbox" checked="@selected"
+                                               @onclick="() => Toggle([room], !selected)"
+                                               @onclick:stopPropagation="true" />
+                                        <span class="node-name @(selected ? "sel" : "")">@room.CenterName</span>
+                                    </div>
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        </div>
+
+        <div class="picker-foot">
+            @if (draft.Count > MaxRooms)
+            {
+                @*先方サイトへの負荷を抑えるための上限。ここを超えたら決定させない*@
+                <div class="foot-error show">
+                    1回の検索で取得できるのは@(MaxRooms)ルームまでです。
+                    @(draft.Count - MaxRooms)件減らしてください。
+                </div>
+            }
+            else
+            {
+                <div class="foot-warn @(draft.Count > WarnThreshold ? "show" : "")">
+                    件数が多いと取得に時間がかかります。都道府県単位で絞り込むのがおすすめです。
+                </div>
+            }
+            <div class="foot-line">
+                <div class="foot-count">
+                    計 <b>@draft.Count</b> 件　<span class="foot-est">@EstimateText(draft.Count)</span>
+                </div>
+                <button type="button" class="btn-gray" @onclick="Close">キャンセル</button>
+                <button type="button" class="btn-red" style="padding:9px 24px;"
+                        disabled="@(draft.Count > MaxRooms)" @onclick="Apply">決定</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    /// <summary>これを超えたら取得に時間がかかる旨を注意する（上限そのものは RateLimiter 側）。</summary>
+    private const int WarnThreshold = 30;
+
+    [Parameter, EditorRequired]
+    public IReadOnlyList<BloodDonationRegionGroup> RegionGroups { get; set; } = [];
+
+    /// <summary>1ルームあたりの取得所要秒数。取得の目安表示に使う。</summary>
+    [Parameter]
+    public double SecPerRoom { get; set; }
+
+    /// <summary>1回の検索で選べるルーム数の上限（作者のスプレッドシート由来）。</summary>
+    [Parameter]
+    public int MaxRooms { get; set; } = RemoteConfig.DefaultMaxRoomsPerSearch;
+
+    [Parameter]
+    public EventCallback<List<int>> OnApply { get; set; }
+
+    public bool IsOpen { get; private set; }
+
+    //確定済みの選択と分ける。キャンセルしたら編集内容は捨てる
+    private HashSet<int> draft = [];
+    //既定では選択済みルームがある地方・都道府県だけ開く
+    private readonly HashSet<string> expandedRegions = [];
+    private readonly HashSet<string> expandedPrefs = [];
+    private string keyword = "";
+
+    private List<BloodDonationCenter> allRooms = [];
+
+    private string Keyword
+    {
+        get => keyword;
+        set => keyword = (value ?? "").Trim();
+    }
+
+    protected override void OnParametersSet()
+    {
+        //ツリー順（地方＞都道府県コード順＞CenterId順）のフラットなリスト。チップ・送信順の基準になる
+        allRooms = RegionGroups.SelectMany(r => r.PrefectureGroups.SelectMany(p => p.Centers)).ToList();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (IsOpen)
+        {
+            //チェックボックスの「一部選択」はDOMプロパティなので、描画のたびにJS側で反映する
+            await JS.InvokeVoidAsync("kenketsu.syncIndeterminate");
+        }
+    }
+
+    public void Open(IEnumerable<int> applied)
+    {
+        draft = [.. applied];
+        keyword = "";
+        expandedRegions.Clear();
+        expandedPrefs.Clear();
+        foreach (var region in RegionGroups)
+        {
+            foreach (var pref in region.PrefectureGroups)
+            {
+                if (!pref.Centers.Any(c => draft.Contains(c.CenterId))) continue;
+                expandedRegions.Add(region.Region);
+                expandedPrefs.Add(pref.Prefecture);
+            }
+        }
+        IsOpen = true;
+        StateHasChanged();
+    }
+
+    public void Close()
+    {
+        if (!IsOpen) return;
+        IsOpen = false;
+        StateHasChanged();
+    }
+
+    private async Task Apply()
+    {
+        IsOpen = false;
+        //送信の並びは常にツリー順（＝都道府県順）。結果表示の都道府県ごとの改行と一致させるため
+        await OnApply.InvokeAsync(allRooms.Where(r => draft.Contains(r.CenterId)).Select(r => r.CenterId).ToList());
+    }
+
+    private void ClearAll() => draft.Clear();
+
+    private void Toggle(IEnumerable<BloodDonationCenter> rooms, bool on)
+    {
+        foreach (var room in rooms)
+        {
+            if (on) draft.Add(room.CenterId);
+            else draft.Remove(room.CenterId);
+        }
+    }
+
+    private void ToggleExpand(HashSet<string> set, string key)
+    {
+        if (!set.Remove(key)) set.Add(key);
+    }
+
+    private static bool IsAllChecked(int selected, int total) => total > 0 && selected == total;
+
+    private static string Indeterminate(int selected, int total)
+        => (selected > 0 && selected < total) ? "true" : "false";
+
+    private static string StripSuffix(string? name)
+    {
+        name ??= "";
+        return name.EndsWith("献血ルーム") ? name[..^"献血ルーム".Length] : name;
+    }
+
+    private string EstimateText(int count)
+    {
+        if (count == 0) return "";
+        int sec = (int)Math.Round(count * SecPerRoom);
+        return sec < 60 ? $"取得の目安 約{sec}秒" : $"取得の目安 約{(int)Math.Round(sec / 60.0)}分";
+    }
+
+    /// <summary>検索語に一致するルームだけを残したツリー（一致した地方・都道府県は自動で開く）。</summary>
+    private List<VisibleRegion> BuildVisibleTree()
+    {
+        List<VisibleRegion> result = [];
+        foreach (var region in RegionGroups)
+        {
+            List<VisiblePrefecture> prefs = [];
+            foreach (var pref in region.PrefectureGroups)
+            {
+                var hits = pref.Centers.Where(c => Matches(c, pref.Prefecture, region.Region)).ToList();
+                if (hits.Count > 0)
+                {
+                    prefs.Add(new VisiblePrefecture(pref.Prefecture, hits));
+                }
+            }
+            if (prefs.Count > 0)
+            {
+                result.Add(new VisibleRegion(region.Region, prefs));
+            }
+        }
+        return result;
+    }
+
+    private bool Matches(BloodDonationCenter room, string prefName, string regionName)
+    {
+        if (keyword.Length == 0) return true;
+        string k = keyword.ToLowerInvariant();
+        return (room.CenterName ?? "").ToLowerInvariant().Contains(k)
+            || prefName.Contains(keyword)
+            || regionName.Contains(keyword);
+    }
+
+    private record VisibleRegion(string Name, List<VisiblePrefecture> Prefectures);
+
+    private record VisiblePrefecture(string Name, List<BloodDonationCenter> Hits);
+}

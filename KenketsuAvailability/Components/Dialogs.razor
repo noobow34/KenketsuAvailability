@@ -1,0 +1,81 @@
+@*
+    alert / confirm の代替モーダル。
+    ブラウザ標準のダイアログは使わず、カスタムオーバーレイで置き換える。
+*@
+
+<!-- confirm代替モーダル -->
+<div class="modal-overlay @(confirmShow ? "show" : "")" @onclick="() => FinishConfirm(false)">
+    <div class="modal-box" style="text-align:center;" @onclick:stopPropagation="true">
+        <div style="font-size:1.8rem; margin-bottom:8px;">@confirmIcon</div>
+        <div style="font-size:0.9rem; color:#333; white-space:pre-wrap;">@confirmText</div>
+        <div class="modal-footer-btns" style="justify-content:center;">
+            <button type="button" class="btn-gray" @onclick="() => FinishConfirm(false)">キャンセル</button>
+            <button type="button" class="btn-red" style="padding:9px 22px;" @onclick="() => FinishConfirm(true)">OK</button>
+        </div>
+    </div>
+</div>
+
+<!-- メッセージモーダル -->
+<div class="modal-overlay @(messageShow ? "show" : "")" @onclick="CloseMessage">
+    <div class="modal-box" style="text-align:center;" @onclick:stopPropagation="true">
+        <div style="font-size:1.8rem; margin-bottom:8px;">@messageIcon</div>
+        <div style="font-size:0.9rem; color:#333;">@messageText</div>
+        <div class="modal-footer-btns" style="justify-content:center; margin-top:14px;">
+            <button type="button" class="btn-gray" @onclick="CloseMessage">OK</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private bool confirmShow;
+    private string confirmText = "";
+    private string confirmIcon = "❓";
+    private TaskCompletionSource<bool>? confirmTcs;
+
+    private bool messageShow;
+    private string messageText = "";
+    private string messageIcon = "ℹ️";
+
+    /// <summary>いずれかのモーダルが開いているか（Escape の処理順を決めるのに使う）。</summary>
+    public bool IsOpen => confirmShow || messageShow;
+
+    public void ShowMessage(string text, string icon = "ℹ️")
+    {
+        messageText = text;
+        messageIcon = icon;
+        messageShow = true;
+        StateHasChanged();
+    }
+
+    public Task<bool> ConfirmAsync(string text, string icon = "❓")
+    {
+        confirmText = text;
+        confirmIcon = icon;
+        confirmShow = true;
+        confirmTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        StateHasChanged();
+        return confirmTcs.Task;
+    }
+
+    /// <summary>Escape で閉じる。confirm はキャンセル扱い。</summary>
+    public void CloseTopmost()
+    {
+        if (messageShow) { CloseMessage(); return; }
+        if (confirmShow) { FinishConfirm(false); }
+    }
+
+    private void CloseMessage()
+    {
+        messageShow = false;
+        StateHasChanged();
+    }
+
+    private void FinishConfirm(bool result)
+    {
+        if (!confirmShow) return;
+        confirmShow = false;
+        StateHasChanged();
+        confirmTcs?.TrySetResult(result);
+        confirmTcs = null;
+    }
+}

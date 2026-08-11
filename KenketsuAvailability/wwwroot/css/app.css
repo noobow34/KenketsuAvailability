@@ -1,0 +1,312 @@
+/* =========================================================================
+   献血空き横断検索
+   Bootstrap は使わず、必要なユーティリティ（d-flex / me-* / mb-3 など）だけを自前で持つ。
+   ========================================================================= */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+    margin: 0;
+    background-color: #fff5f5;
+    color: #212529;
+    font-family: system-ui, -apple-system, "Segoe UI", "Yu Gothic UI", "Meiryo", "Noto Sans JP", sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+    /* WebView2 のスクロールバーが結果グリッドの幅を揺らさないよう常時確保する */
+    overflow-y: scroll;
+}
+
+/* ── Bootstrap から持ってきたユーティリティ（このアプリで使う分のみ） ── */
+.container-fluid { width: 100%; margin: 0 auto; padding-left: 12px; padding-right: 12px; }
+.py-3 { padding-top: 1rem; padding-bottom: 1rem; }
+.mt-3 { margin-top: 1rem; }
+.mb-3 { margin-bottom: 1rem; }
+.me-1 { margin-right: 0.25rem; }
+.me-2 { margin-right: 0.5rem; }
+.me-3 { margin-right: 1rem; }
+.d-flex { display: flex; }
+.align-items-center { align-items: center; }
+.justify-content-end { justify-content: flex-end; }
+
+/* ── ページ見出し ────────────────────────────────────────── */
+.page-title { font-size: 1.4rem; font-weight: bold; color: #c0392b; }
+
+.section-card {
+    background: white; border-radius: 12px;
+    padding: 16px; box-shadow: 0 1px 8px rgba(0,0,0,0.08);
+    margin-bottom: 16px;
+}
+.section-title {
+    font-size: 0.82rem; font-weight: 700; color: #c0392b;
+    margin-bottom: 12px;
+}
+.form-label-sm { font-size: 0.82rem; font-weight: 600; color: #555; margin-bottom: 4px; display: block; }
+.form-group-sm { margin-bottom: 12px; }
+
+/* 検索条件は横並び。幅が足りなければ折り返す */
+.cond-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px; }
+.cond-date { flex: 0 0 auto; }
+.cond-centers { flex: 0 1 380px; min-width: 260px; }
+/* 広い画面でボタンが右端まで離れないよう、ルーム選択のすぐ隣に置く */
+.cond-action { align-self: flex-start; margin-top: 22px; }
+
+/* 検索条件に並ぶコントロールは中身の高さがまちまちなので、共通の高さで揃える */
+:root { --cond-ctrl-height: 38px; }
+
+input.form-ctrl, select.form-ctrl {
+    width: 100%; height: var(--cond-ctrl-height); padding: 0 10px;
+    border: 1.5px solid #e0e0e0; border-radius: 8px;
+    font-size: 0.88rem; background: white; color: #333;
+    box-sizing: border-box; font-family: inherit;
+}
+input.form-ctrl.w-date { width: 170px; }
+/* 既定の見た目だと枠線・角丸が他の入力欄と揃わないので、矢印だけ自前で描く */
+select.form-ctrl {
+    appearance: none; padding-right: 28px; cursor: pointer;
+    background-image: linear-gradient(45deg, transparent 50%, #b0b0b0 50%), linear-gradient(135deg, #b0b0b0 50%, transparent 50%);
+    background-position: right 14px center, right 9px center;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+}
+select.form-ctrl.w-preset { width: 190px; }
+.preset-row { display: flex; gap: 6px; align-items: center; }
+.btn-icon {
+    display: inline-flex; align-items: center; justify-content: center;
+    height: var(--cond-ctrl-height); padding: 0 11px;
+    background: white; border: 1.5px solid #e0e0e0; border-radius: 8px;
+    color: #aaa; cursor: pointer; line-height: 1; box-sizing: border-box;
+}
+.btn-icon:hover:not(:disabled) { color: #c0392b; border-color: #e74c3c; }
+.btn-icon:disabled { opacity: 0.4; cursor: not-allowed; }
+input.form-ctrl:focus, select.form-ctrl:focus { outline: none; border-color: #e74c3c; }
+
+/* 献血ルームの選択サマリ。普段はここだけ見えていればよく、変更時のみピッカーを開く */
+.summary-box {
+    display: flex; align-items: center; gap: 10px;
+    height: var(--cond-ctrl-height); padding: 0 5px 0 12px;
+    border: 1.5px solid #e0e0e0; border-radius: 8px; background: white;
+    box-sizing: border-box;
+}
+/* 選択件数と内訳は1行に収める（条件カードを縦に伸ばさないため） */
+.summary-text { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; font-size: 0.85rem; }
+.summary-main { font-weight: 700; color: #333; white-space: nowrap; }
+.summary-main.is-empty { color: #c0392b; }
+.summary-sub { min-width: 0; font-size: 0.72rem; color: #999; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.btn-outline {
+    background: white; color: #c0392b; border: 1.5px solid #e74c3c;
+    border-radius: 20px; padding: 5px 15px; font-size: 0.8rem; font-weight: 700;
+    cursor: pointer; white-space: nowrap; line-height: 1.4; font-family: inherit;
+}
+.btn-outline:hover { background: #fdf2f2; }
+.btn-link { background: none; border: none; color: #c0392b; font-size: 0.72rem; font-weight: 700; cursor: pointer; padding: 2px 4px; font-family: inherit; }
+.btn-link:hover { text-decoration: underline; }
+
+/* ルーム選択ピッカー（地方 → 都道府県 → ルーム） */
+.picker {
+    background: white; border-radius: 16px; width: min(96vw, 560px);
+    max-height: min(88vh, 760px); display: flex; flex-direction: column;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.22); overflow: hidden;
+    animation: modalIn 0.15s ease;
+}
+.picker-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px 10px; border-bottom: 1px solid #f2f2f2; }
+.picker-title { font-size: 0.95rem; font-weight: 700; color: #c0392b; flex: 1; }
+.picker-close { background: none; border: none; font-size: 1.3rem; line-height: 1; color: #aaa; cursor: pointer; padding: 2px 6px; }
+.picker-close:hover { color: #666; }
+
+.picker-search { padding: 10px 16px 8px; position: relative; }
+.picker-search input { padding-left: 30px; }
+.search-icon { position: absolute; left: 26px; top: 50%; transform: translateY(-50%); color: #ccc; font-size: 0.8rem; }
+
+.chip-area { padding: 0 16px 10px; }
+.chip-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
+.chip-head-label { font-size: 0.72rem; font-weight: 700; color: #888; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; max-height: 84px; overflow-y: auto; }
+.chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 0.7rem; font-weight: 600; border-radius: 20px;
+    padding: 3px 5px 3px 9px; background: #fde8e8; color: #c0392b;
+}
+.chip button { background: none; border: none; color: #d98080; cursor: pointer; font-size: 0.85rem; line-height: 1; padding: 0 2px; }
+.chip button:hover { color: #c0392b; }
+.chip-empty { font-size: 0.74rem; color: #bbb; }
+
+.tree { flex: 1; overflow-y: auto; border-top: 1px solid #f2f2f2; padding: 6px 8px 10px; }
+.node { display: flex; align-items: center; gap: 8px; border-radius: 8px; padding: 6px 8px; cursor: pointer; }
+.node:hover { background: #fafafa; }
+.node input[type=checkbox] { width: 15px; height: 15px; accent-color: #e74c3c; cursor: pointer; flex: 0 0 auto; }
+.node-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.caret { color: #ccc; font-size: 0.7rem; width: 12px; text-align: center; flex: 0 0 auto; }
+.node-count { font-size: 0.68rem; color: #bbb; flex: 0 0 auto; }
+.node-count.on { color: #c0392b; font-weight: 700; }
+.node-region { font-size: 0.85rem; font-weight: 700; color: #444; }
+.node-pref { font-size: 0.8rem; font-weight: 700; color: #666; margin-left: 16px; }
+.node-room { font-size: 0.78rem; color: #444; margin-left: 40px; }
+.node-room .node-name.sel { color: #c0392b; font-weight: 600; }
+.tree-empty { padding: 24px 12px; text-align: center; color: #bbb; font-size: 0.8rem; }
+
+.picker-foot { border-top: 1px solid #f2f2f2; padding: 10px 16px 14px; }
+.foot-line { display: flex; align-items: center; gap: 10px; }
+.foot-count { flex: 1; font-size: 0.8rem; color: #555; }
+.foot-count b { color: #c0392b; font-size: 0.95rem; }
+.foot-est { color: #999; font-size: 0.75rem; }
+/* 選択しすぎると取得に時間がかかり先方サイトの負荷にもなるため注意を出す */
+.foot-warn { display: none; font-size: 0.72rem; color: #b7791f; background: #fffbe6; border-radius: 8px; padding: 6px 9px; margin-bottom: 8px; line-height: 1.6; }
+.foot-warn.show { display: block; }
+/* レートリミットの上限超過。こちらは注意ではなく決定を止める */
+.foot-error { display: none; font-size: 0.72rem; color: #c0392b; background: #fdf2f2; border: 1px solid #f3c9c9; border-radius: 8px; padding: 6px 9px; margin-bottom: 8px; line-height: 1.6; }
+.foot-error.show { display: block; }
+
+.btn-red {
+    background: #e74c3c; color: white; border: none;
+    border-radius: 20px; padding: 10px 28px;
+    font-size: 0.9rem; font-weight: 600; cursor: pointer; font-family: inherit;
+}
+.btn-red:hover:not(:disabled) { background: #c0392b; }
+.btn-red:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btn-gray { background: #ecf0f1; color: #555; border: none; border-radius: 20px; padding: 8px 20px; font-size: 0.85rem; font-weight: 600; cursor: pointer; font-family: inherit; }
+.btn-gray:hover { background: #dfe6e9; }
+
+/* 種別タブ */
+.filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+.type-tabs { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.type-tab {
+    font-size: 0.78rem; border-radius: 20px; padding: 6px 16px;
+    border: 1.5px solid #e74c3c; background: white; color: #e74c3c;
+    font-weight: 700; cursor: pointer; font-family: inherit;
+}
+.type-tab.active { background: #e74c3c; color: white; }
+
+/* 複数種別をまとめて表示するタブ（全種・成分全て）と、単一種別タブを見分けられるようにする */
+.tab-group { display: flex; align-items: center; gap: 6px; }
+.tab-group-label { font-size: 0.7rem; font-weight: 700; color: #a57f7f; letter-spacing: 0.04em; white-space: nowrap; }
+.tab-divider { width: 1px; height: 20px; background: #eee; margin: 0 3px; }
+.type-tab.tab-combo:not(.active) { background: #fdf2f2; border-style: dashed; }
+.type-tab.tab-combo.active { background: #c0392b; border-color: #c0392b; }
+.filter-line { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: #666; margin: 0; }
+
+/* 進捗 */
+.progress-line { font-size: 0.8rem; color: #888; min-height: 1.2em; margin-bottom: 10px; }
+.progress-bar-wrap { height: 4px; background: #f0e0e0; border-radius: 4px; overflow: hidden; margin-bottom: 12px; }
+.progress-bar-fill { height: 100%; width: 0; background: #e74c3c; transition: width 0.2s; }
+
+/* 結果：ルームカードを画面幅いっぱいに並べる */
+#resultArea {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 12px;
+    align-items: start;
+}
+.room-card {
+    background: white; border-radius: 12px; box-shadow: 0 1px 8px rgba(0,0,0,0.08);
+    overflow: hidden;
+}
+/* 都道府県の変わり目に入れる改行用の要素。グリッド1行を占有して以降を次の行から並べる */
+.pref-break { grid-column: 1 / -1; height: 0; }
+.room-head {
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    padding: 9px 12px; border-bottom: 1px solid #f5f5f5;
+}
+.room-name { font-size: 0.85rem; font-weight: 700; color: #333; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-link { font-size: 0.7rem; color: #c0392b; text-decoration: none; white-space: nowrap; cursor: pointer; }
+.room-link:hover { text-decoration: underline; }
+
+.type-row { display: flex; gap: 8px; padding: 7px 12px; border-bottom: 1px solid #fafafa; }
+.type-row:last-child { border-bottom: none; }
+.type-label {
+    flex: 0 0 42px; font-size: 0.7rem; font-weight: 700;
+    color: #c0392b; padding-top: 3px;
+}
+/* 「空きなし」等の状態は時間チップの後ろに置く。前に置くとチップの開始位置が行ごとにずれ、
+   ラベルの下に置くと行が常に2行分の高さになるため */
+.type-status { font-size: 0.7rem; color: #aaa; padding-top: 3px; white-space: nowrap; }
+.slot-wrap { flex: 1; display: flex; flex-wrap: wrap; gap: 3px; min-width: 0; }
+.slot {
+    font-size: 0.7rem; border-radius: 5px; padding: 2px 6px;
+    background: #fde8e8; color: #c0392b; font-weight: 600;
+}
+/* 満枠の時間。「満枠も表示」ONのときだけ出す */
+.slot-full {
+    display: none;
+    background: #f1f1f1; color: #a8a8a8; font-weight: 500; text-decoration: line-through;
+}
+#resultArea.show-full .slot-full { display: inline-block; }
+.slot-full-count { font-size: 0.68rem; color: #b5b5b5; padding-top: 4px; }
+#resultArea.show-full .slot-full-count { display: none; }
+.room-error { padding: 9px 12px; font-size: 0.74rem; color: #e74c3c; }
+
+.empty-note { padding: 20px 16px; text-align: center; font-size: 0.82rem; color: #aaa; }
+
+/* レートリミットの説明。常時見えるところに置いて、何をどれだけ抑えているか分かるようにする */
+.rate-note {
+    margin-top: 14px; padding: 8px 11px;
+    background: #fbfbfb; border: 1px solid #eee; border-radius: 8px;
+    font-size: 0.72rem; color: #888; line-height: 1.8;
+}
+.rate-note b { color: #666; font-weight: 700; }
+.rate-remain { display: inline-block; margin-left: 4px; color: #c0392b; font-weight: 700; white-space: nowrap; }
+.rate-remain.is-empty { background: #fdf2f2; border-radius: 6px; padding: 1px 7px; }
+
+/* 読み込み中・停止中・エラーの状態表示 */
+.state-card { text-align: center; padding: 34px 20px; }
+.state-icon { font-size: 2rem; color: #e74c3c; margin-bottom: 10px; }
+.state-card.is-error .state-icon { color: #e67e22; }
+.state-card.is-stopped .state-icon { color: #8e9aa5; }
+.state-title { font-size: 1rem; font-weight: 700; color: #333; margin-bottom: 8px; }
+.state-text { font-size: 0.82rem; color: #777; line-height: 1.8; }
+.state-actions { display: flex; justify-content: center; gap: 8px; margin-top: 18px; }
+
+/* 作者からのお知らせ */
+.author-message {
+    background: white; border-radius: 12px; box-shadow: 0 1px 8px rgba(0,0,0,0.08);
+    border-left: 4px solid #e74c3c; padding: 14px 16px; margin-bottom: 16px;
+}
+.author-message-head { font-size: 0.75rem; font-weight: 700; color: #c0392b; margin-bottom: 8px; }
+.author-message-body { font-size: 0.85rem; color: #333; line-height: 1.8; }
+/* プレーンテキストは改行をそのまま見せる */
+.author-message-body.is-text { white-space: pre-wrap; }
+/* 作者が書いたHTMLがカードからはみ出さないようにする */
+.author-message-body img { max-width: 100%; height: auto; }
+.author-message-body a { color: #c0392b; }
+.author-message-body :is(p, ul, ol) { margin: 0 0 8px; }
+.author-message-body :is(p, ul, ol):last-child { margin-bottom: 0; }
+.author-message-body :is(ul, ol) { padding-left: 1.4em; }
+.author-message-body :is(h1, h2, h3, h4) { font-size: 0.95rem; margin: 0 0 6px; color: #c0392b; }
+.author-message-body pre { overflow-x: auto; background: #fafafa; padding: 8px; border-radius: 6px; }
+.author-message-body table { border-collapse: collapse; }
+.author-message-body :is(th, td) { border: 1px solid #eee; padding: 4px 8px; }
+
+/* フッタ（マスタ更新日・バージョン） */
+.app-foot { font-size: 0.7rem; color: #bbb; }
+
+/* モーダル */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 1000; align-items: center; justify-content: center; }
+.modal-overlay.show { display: flex; }
+.modal-box { background: white; border-radius: 16px; padding: 22px 20px; width: min(94vw, 360px); box-shadow: 0 8px 40px rgba(0,0,0,0.22); animation: modalIn 0.15s ease; }
+@keyframes modalIn { from { transform: translateY(14px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.modal-footer-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+/* 狭い画面ではタブが2段になるので、区切り線は消してグループ単位で折り返す */
+@media (max-width: 560px) {
+    .tab-divider { display: none; }
+    .type-tabs { gap: 8px 6px; }
+
+    /* ピッカーは全画面にする（ツリーの縦スクロール領域を稼ぐため） */
+    #pickerModal { padding: 0; }
+    .picker { width: 100vw; height: 100dvh; max-height: none; border-radius: 0; }
+    .cond-date, .cond-preset, .cond-centers, .cond-action { flex: 1 1 100%; }
+    select.form-ctrl.w-preset { width: 100%; }
+    .cond-action { margin-top: 0; }
+    input.form-ctrl.w-date { width: 100%; }
+}
+
+/* Blazor のエラー表示 */
+#blazor-error-ui {
+    background: #ffe0e0; color: #8b1a1a; display: none;
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 2000;
+    padding: 10px 16px; font-size: 0.82rem; box-shadow: 0 -1px 6px rgba(0,0,0,0.2);
+}
+#blazor-error-ui .reload { color: #8b1a1a; margin-left: 10px; }

@@ -1,0 +1,26 @@
+@*
+    作者からのお知らせ。スプレッドシートの message / messageFormat をそのまま表示する。
+    HTML を選んだ場合は作者が書いたものをそのまま描画する（信頼できる発信元という前提）。
+*@
+@if (Config.Message.Length > 0)
+{
+    <div class="author-message">
+        <div class="author-message-head">
+            <i class="fa-regular fa-comment-dots me-1"></i>作者からのお知らせ
+        </div>
+        @if (Config.MessageFormat == MessageFormat.Html)
+        {
+            <div class="author-message-body">@((MarkupString)Config.Message)</div>
+        }
+        else
+        {
+            @*プレーンテキストは改行をそのまま見せる（CSSの white-space に任せる）*@
+            <div class="author-message-body is-text">@Config.Message</div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public RemoteConfig Config { get; set; } = new();
+}
