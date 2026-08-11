@@ -16,9 +16,9 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 
@@ -42,7 +42,7 @@ jobs:
           Copy-Item publish/KenketsuAvailability.exe "dist/${{ steps.ver.outputs.asset }}"
           Get-ChildItem dist | Select-Object Name, Length
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: KenketsuAvailability-win-x64
           path: dist/*.exe
