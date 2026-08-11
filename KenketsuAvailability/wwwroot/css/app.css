@@ -181,8 +181,12 @@ input.form-ctrl:focus, select.form-ctrl:focus { outline: none; border-color: #e7
 .mode-tab:hover:not(.active) { border-color: #f0c8c8; color: #c0392b; }
 .mode-tab.active { background: #c0392b; border-color: #c0392b; color: white; }
 
-/* 日付横断の献血ルーム選択 */
-select.form-ctrl.w-room { width: 280px; }
+/* 単一選択ピッカー（日付横断の献血ルーム） */
+.picker-current { display: flex; align-items: baseline; gap: 8px; padding: 0 16px 10px; }
+.picker-current-name { font-size: 0.82rem; font-weight: 700; color: #c0392b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* チェックボックスの代わりの選択マーク。複数選択版と行の字下げを揃える */
+.node-radio { flex: 0 0 auto; width: 15px; text-align: center; color: #ddd; font-size: 0.82rem; }
+.node-radio.on { color: #e74c3c; }
 
 /* 対象日ピッカーのカレンダー */
 .cal-nav { display: flex; align-items: center; gap: 8px; padding: 2px 4px 10px; }

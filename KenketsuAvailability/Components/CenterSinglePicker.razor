@@ -1,0 +1,190 @@
+@*
+    献血ルームを1件だけ選ぶピッカー（日付横断用）。
+    ルーム数が多くプルダウンでは探しづらいため、ルーム横断と同じツリー＋インクリメンタル検索にする。
+    複数選択版と違い、ルームを押した時点で確定して閉じる。
+*@
+<div class="modal-overlay @(IsOpen ? "show" : "")" @onclick="Close">
+    <div class="picker" @onclick:stopPropagation="true">
+        <div class="picker-head">
+            <span class="picker-title"><i class="fa-solid fa-hospital me-1"></i>献血ルームを選択</span>
+            <button type="button" class="picker-close" @onclick="Close">&times;</button>
+        </div>
+
+        <div class="picker-search">
+            <i class="fa-solid fa-magnifying-glass search-icon"></i>
+            <input type="text" id="singlePickerSearch" class="form-ctrl" placeholder="ルーム名・都道府県で検索"
+                   @bind="Keyword" @bind:event="oninput" />
+        </div>
+
+        <div class="picker-current">
+            <span class="chip-head-label">選択中</span>
+            @if (SelectedName.Length == 0)
+            {
+                <span class="chip-empty">選択されていません</span>
+            }
+            else
+            {
+                <span class="picker-current-name">@SelectedName</span>
+            }
+        </div>
+
+        <div class="tree">
+            @{
+                var visibleRegions = BuildVisibleTree();
+            }
+            @if (visibleRegions.Count == 0)
+            {
+                <div class="tree-empty">該当する献血ルームがありません</div>
+            }
+            else
+            {
+                @foreach (var region in visibleRegions)
+                {
+                    var regionRooms = region.Prefectures.Sum(p => p.Hits.Count);
+                    var regionOpen = Keyword.Length > 0 || expandedRegions.Contains(region.Name);
+
+                    <div class="node node-region" @onclick="() => ToggleExpand(expandedRegions, region.Name)">
+                        <span class="node-name">@region.Name</span>
+                        <span class="node-count">@regionRooms 件</span>
+                        <span class="caret">@(regionOpen ? "▾" : "▸")</span>
+                    </div>
+
+                    if (regionOpen)
+                    {
+                        foreach (var pref in region.Prefectures)
+                        {
+                            var prefOpen = Keyword.Length > 0 || expandedPrefs.Contains(pref.Name);
+
+                            <div class="node node-pref" @onclick="() => ToggleExpand(expandedPrefs, pref.Name)">
+                                <span class="node-name">@pref.Name</span>
+                                <span class="node-count">@pref.Hits.Count 件</span>
+                                <span class="caret">@(prefOpen ? "▾" : "▸")</span>
+                            </div>
+
+                            if (prefOpen)
+                            {
+                                foreach (var room in pref.Hits)
+                                {
+                                    var selected = room.CenterId == SelectedCenterId;
+                                    <div class="node node-room" @key="room.CenterId" @onclick="() => Select(room)">
+                                        <i class="node-radio @(selected ? "on" : "") @(selected ? "fa-solid fa-circle-check" : "fa-regular fa-circle")"></i>
+                                        <span class="node-name @(selected ? "sel" : "")">@room.CenterName</span>
+                                    </div>
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        </div>
+
+        <div class="picker-foot">
+            <div class="foot-line">
+                <div class="foot-count">ルームを選ぶとそのまま確定します</div>
+                <button type="button" class="btn-gray" @onclick="Close">キャンセル</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<BloodDonationRegionGroup> RegionGroups { get; set; } = [];
+
+    [Parameter]
+    public EventCallback<int> OnSelect { get; set; }
+
+    public bool IsOpen { get; private set; }
+
+    /// <summary>いま選ばれている献血ルーム。未選択なら null。</summary>
+    private int? SelectedCenterId { get; set; }
+
+    //既定では選択済みルームがある地方・都道府県だけ開く
+    private readonly HashSet<string> expandedRegions = [];
+    private readonly HashSet<string> expandedPrefs = [];
+    private string keyword = "";
+
+    private string Keyword
+    {
+        get => keyword;
+        set => keyword = (value ?? "").Trim();
+    }
+
+    private string SelectedName
+        => RegionGroups.SelectMany(r => r.PrefectureGroups.SelectMany(p => p.Centers))
+                       .FirstOrDefault(c => c.CenterId == SelectedCenterId)?.CenterName ?? "";
+
+    public void Open(int? selected)
+    {
+        SelectedCenterId = selected;
+        keyword = "";
+        expandedRegions.Clear();
+        expandedPrefs.Clear();
+        foreach (var region in RegionGroups)
+        {
+            foreach (var pref in region.PrefectureGroups)
+            {
+                if (!pref.Centers.Any(c => c.CenterId == selected)) continue;
+                expandedRegions.Add(region.Region);
+                expandedPrefs.Add(pref.Prefecture);
+            }
+        }
+        IsOpen = true;
+        StateHasChanged();
+    }
+
+    public void Close()
+    {
+        if (!IsOpen) return;
+        IsOpen = false;
+        StateHasChanged();
+    }
+
+    private async Task Select(BloodDonationCenter room)
+    {
+        SelectedCenterId = room.CenterId;
+        IsOpen = false;
+        await OnSelect.InvokeAsync(room.CenterId);
+    }
+
+    private void ToggleExpand(HashSet<string> set, string key)
+    {
+        if (!set.Remove(key)) set.Add(key);
+    }
+
+    /// <summary>検索語に一致するルームだけを残したツリー（一致した地方・都道府県は自動で開く）。</summary>
+    private List<VisibleRegion> BuildVisibleTree()
+    {
+        List<VisibleRegion> result = [];
+        foreach (var region in RegionGroups)
+        {
+            List<VisiblePrefecture> prefs = [];
+            foreach (var pref in region.PrefectureGroups)
+            {
+                var hits = pref.Centers.Where(c => Matches(c, pref.Prefecture, region.Region)).ToList();
+                if (hits.Count > 0)
+                {
+                    prefs.Add(new VisiblePrefecture(pref.Prefecture, hits));
+                }
+            }
+            if (prefs.Count > 0)
+            {
+                result.Add(new VisibleRegion(region.Region, prefs));
+            }
+        }
+        return result;
+    }
+
+    private bool Matches(BloodDonationCenter room, string prefName, string regionName)
+    {
+        if (keyword.Length == 0) return true;
+        string k = keyword.ToLowerInvariant();
+        return (room.CenterName ?? "").ToLowerInvariant().Contains(k)
+            || prefName.Contains(keyword)
+            || regionName.Contains(keyword);
+    }
+
+    private record VisibleRegion(string Name, List<VisiblePrefecture> Prefectures);
+
+    private record VisiblePrefecture(string Name, List<BloodDonationCenter> Hits);
+}

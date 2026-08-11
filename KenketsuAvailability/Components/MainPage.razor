@@ -119,24 +119,15 @@ else
         else
         {
         <div class="cond-row">
-            <div class="cond-room">
+            <div class="cond-centers">
                 <label class="form-label-sm">献血ルーム</label>
-                <select class="form-ctrl w-room" @bind:get="SingleCenterValue" @bind:set="OnSingleCenterChanged">
-                    <option value="">（未選択）</option>
-                    @*ツリーと同じ 地方＞都道府県 の並びで、都道府県ごとにまとめる*@
-                    @foreach (var region in Master.RegionGroups)
-                    {
-                        @foreach (var pref in region.PrefectureGroups)
-                        {
-                            <optgroup label="@($"{region.Region} / {pref.Prefecture}")">
-                                @foreach (var center in pref.Centers)
-                                {
-                                    <option value="@center.CenterId">@center.CenterName</option>
-                                }
-                            </optgroup>
-                        }
-                    }
-                </select>
+                <div class="summary-box">
+                    <div class="summary-text">
+                        <span class="summary-main @(singleCenterId == null ? "is-empty" : "")">@SingleCenterMain</span>
+                        <span class="summary-sub">@SingleCenterSub</span>
+                    </div>
+                    <button type="button" class="btn-outline" @onclick="OpenSinglePicker">変更</button>
+                </div>
             </div>
 
             <div class="cond-centers">
@@ -279,6 +270,9 @@ else
 <CenterPicker @ref="picker" RegionGroups="Master.RegionGroups" SecPerRoom="secPerRoom"
               MaxRooms="Limiter.MaxRoomsPerSearch" OnApply="ApplyPicker" />
 
+<!-- 献血ルーム選択ピッカー（日付横断・単一選択） -->
+<CenterSinglePicker @ref="singlePicker" RegionGroups="Master.RegionGroups" OnSelect="ApplySingleCenter" />
+
 <!-- 対象日ピッカー（日付横断） -->
 <DatePicker @ref="datePicker" SecPerRoom="secPerRoom"
             MaxDates="Limiter.MaxDatesPerSearch" OnApply="ApplyDatePicker" />
@@ -330,6 +324,7 @@ else
     };
 
     private CenterPicker? picker;
+    private CenterSinglePicker? singlePicker;
     private DatePicker? datePicker;
     private Dialogs? dialogs;
     private DotNetObjectReference<MainPage>? selfRef;
@@ -442,11 +437,19 @@ else
 
     // ── 日付横断の献血ルーム・対象日 ────────────────────────────
 
-    private string SingleCenterValue => singleCenterId?.ToString() ?? "";
+    private BloodDonationCenter? SingleCenter => singleCenterId is int id ? Master.Find(id) : null;
 
-    private void OnSingleCenterChanged(string? value)
+    private string SingleCenterMain => SingleCenter?.CenterName ?? "未選択";
+
+    private string SingleCenterSub => SingleCenter is BloodDonationCenter center
+        ? (string.IsNullOrWhiteSpace(center.Prefecture) ? PrefectureRegions.Other : center.Prefecture!)
+        : "「変更」から献血ルームを選択してください";
+
+    private void OpenSinglePicker() => singlePicker?.Open(singleCenterId);
+
+    private void ApplySingleCenter(int centerId)
     {
-        singleCenterId = string.IsNullOrEmpty(value) ? null : int.Parse(value);
+        singleCenterId = centerId;
         SaveCondition();
     }
 
@@ -490,6 +493,7 @@ else
         if (dialogs?.IsOpen == true) { dialogs.CloseTopmost(); return; }
         if (presetSaveShow) { ClosePresetSave(); return; }
         picker?.Close();
+        singlePicker?.Close();
         datePicker?.CloseFromEscape();
         StateHasChanged();
     }
