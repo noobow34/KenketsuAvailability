@@ -69,6 +69,17 @@ public class SettingsStore
         }
     }
 
+    /// <summary>生年月日・性別が登録済みか。未登録なら検索させない。</summary>
+    public bool HasProfile => Settings.BirthDate.HasValue && Settings.Gender.HasValue;
+
+    /// <summary>生年月日・性別を保存する。このPC内にのみ保存し、外部へ送ることはない。</summary>
+    public void SaveProfile(DateOnly birthDate, GenderEnum gender)
+    {
+        Settings.BirthDate = birthDate;
+        Settings.Gender = gender;
+        Save();
+    }
+
     /// <summary>検索条件を保存する。画面での変更のたびに呼ばれる。</summary>
     public void SaveCondition(BloodDonationSearchModeEnum searchMode,
         IEnumerable<int> centerIds, DateOnly? targetDate,

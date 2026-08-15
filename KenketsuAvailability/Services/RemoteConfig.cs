@@ -45,8 +45,36 @@ public class RemoteConfig
     /// <summary>直近1時間に投げられるリクエスト数の上限。</summary>
     public int HourlyRequestLimit { get; set; } = DefaultHourlyRequestLimit;
 
+    /// <summary>
+    /// これ未満のバージョンは使用不可にする（例：1.2.0）。空なら下限なし。
+    /// 先方サイトのHTML変更に追従できていない古い版を止めるために使う。
+    /// </summary>
+    public string MinAppVersion { get; set; } = "";
+
+    /// <summary>個別に使用不可にするバージョン。特定の版にだけ問題が見つかった場合に使う。</summary>
+    public List<string> BlockedVersions { get; set; } = [];
+
     /// <summary>献血ルーム一覧。</summary>
     public List<BloodDonationCenter> Centers { get; set; } = [];
+
+    /// <summary>
+    /// 指定のバージョンが使用可能か。使用不可なら理由を返す。
+    /// 設定が空・不正なら制限なしとして通す（設定ミスで全員が締め出されるのを避ける）。
+    /// </summary>
+    public (bool Allowed, string Reason) CheckVersion(Version current)
+    {
+        if (BlockedVersions.Any(v => string.Equals(v, current.ToString(), StringComparison.OrdinalIgnoreCase)))
+        {
+            return (false, "このバージョンは利用できなくなりました。");
+        }
+
+        if (System.Version.TryParse(MinAppVersion, out var min) && current < min)
+        {
+            return (false, $"バージョン {min} 以降が必要です。");
+        }
+
+        return (true, "");
+    }
 
     // ── 既定値と、スプレッドシート側の値を丸める範囲 ────────────────
     // スプレッドシートの入力ミスで、先方サイトへ極端な負荷をかける設定になるのを防ぐ。

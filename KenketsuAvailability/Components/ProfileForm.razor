@@ -1,0 +1,112 @@
+@*
+    生年月日・性別の入力。初回起動時は必須の登録画面として、以降は変更用のモーダルとして使う。
+    先方の空き状況ページがこの2つを引数に取るため、架空の値ではなく本人の値を送れるようにしている。
+*@
+<div class="profile-form">
+    <div class="form-group-sm">
+        <label class="form-label-sm">生年月日</label>
+        <input type="date" class="form-ctrl w-date" @bind="birthDate" @bind:format="yyyy-MM-dd"
+               min="@MinBirthDate.ToString("yyyy-MM-dd")" max="@MaxBirthDate.ToString("yyyy-MM-dd")" />
+    </div>
+
+    <div class="form-group-sm">
+        <label class="form-label-sm">性別</label>
+        <div class="gender-tabs">
+            @foreach (var value in new[] { GenderEnum.Male, GenderEnum.Female })
+            {
+                <button type="button" class="gender-tab @(gender == value ? "active" : "")"
+                        @onclick="() => gender = value">
+                    @value.GetDescription()
+                </button>
+            }
+        </div>
+        <div class="form-hint">先方の予約ページが2択のため、この2つのみです。</div>
+    </div>
+
+    @if (error.Length > 0)
+    {
+        <div class="profile-error">@error</div>
+    }
+
+    <div class="profile-privacy">
+        <i class="fa-solid fa-lock me-1"></i>
+        <b>この情報の扱いについて</b>
+        <ul>
+            <li>献血予約サイトへ<b>空き状況を照会するときにのみ</b>使用します</li>
+            <li><b>作者を含む第三者へ送信されることはありません。</b>
+                アプリが外部へ送るのは、この照会と、起動時の設定の読み取りだけです</li>
+            <li>保存先はお使いのPC内の <code>%APPDATA%\KenketsuAvailability\settings.json</code> だけです</li>
+        </ul>
+    </div>
+
+    <div class="profile-actions">
+        @if (ShowCancel)
+        {
+            <button type="button" class="btn-gray" @onclick="OnCancel">キャンセル</button>
+        }
+        <button type="button" class="btn-red" @onclick="Save">@SaveLabel</button>
+    </div>
+</div>
+
+@code {
+    /// <summary>献血の申込対象になりえない年齢まで遡れても意味がないので、入力範囲を絞る。</summary>
+    private static DateOnly MinBirthDate => DateOnly.FromDateTime(DateTime.Today).AddYears(-120);
+    private static DateOnly MaxBirthDate => DateOnly.FromDateTime(DateTime.Today);
+
+    [Parameter]
+    public DateOnly? InitialBirthDate { get; set; }
+
+    [Parameter]
+    public GenderEnum? InitialGender { get; set; }
+
+    /// <summary>変更用のときだけキャンセルを出す（初回登録では戻る先が無い）。</summary>
+    [Parameter]
+    public bool ShowCancel { get; set; }
+
+    [Parameter]
+    public string SaveLabel { get; set; } = "保存";
+
+    [Parameter]
+    public EventCallback<(DateOnly BirthDate, GenderEnum Gender)> OnSave { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    private DateOnly? birthDate;
+    private GenderEnum? gender;
+    private string error = "";
+
+    protected override void OnParametersSet()
+    {
+        birthDate = InitialBirthDate;
+        gender = InitialGender;
+        error = "";
+    }
+
+    private async Task Save()
+    {
+        if (birthDate is not DateOnly date)
+        {
+            error = "生年月日を入力してください。";
+            return;
+        }
+        if (date > MaxBirthDate)
+        {
+            error = "生年月日が未来の日付になっています。";
+            return;
+        }
+        if (date < MinBirthDate)
+        {
+            error = "生年月日が正しくないようです。";
+            return;
+        }
+        if (gender is not GenderEnum selected)
+        {
+            error = "性別を選択してください。";
+            return;
+        }
+
+        error = "";
+        await OnSave.InvokeAsync((date, selected));
+    }
+}

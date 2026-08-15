@@ -20,6 +20,15 @@ public class AppSettings
     /// <summary>名前付きの献血ルーム選択セット。</summary>
     public List<PresetItem> Presets { get; set; } = [];
 
+    /// <summary>
+    /// 生年月日。先方の空き状況ページが引数に取るため保持する。
+    /// このPC内にのみ保存し、作者を含む第三者へ送ることはない。
+    /// </summary>
+    public DateOnly? BirthDate { get; set; }
+
+    /// <summary>性別。生年月日と同じく照会にのみ使う。</summary>
+    public GenderEnum? Gender { get; set; }
+
     /// <summary>前回の検索方向（ルーム横断／日付横断）。</summary>
     public BloodDonationSearchModeEnum SearchMode { get; set; } = BloodDonationSearchModeEnum.Rooms;
 

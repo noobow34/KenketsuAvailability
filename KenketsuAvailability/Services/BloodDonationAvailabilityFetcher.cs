@@ -53,16 +53,25 @@ public sealed class BloodDonationAvailabilityFetcher : IDisposable
 
     /// <summary>
     /// 指定日・指定献血ルームの予約ページURL。ブラウザで開くリンクにもそのまま使える。
+    ///
+    /// 先方ページは生年月日・性別を引数に取る作りになっているため、利用者本人の値を渡す。
+    /// 固定のダミー値を送らないための措置で、先方がこれらの値をどう扱っているかは確認していない。
     /// </summary>
-    public static string BuildReservePageUrl(DateTime targetDate, string placeId)
-        => $"https://www.kenketsu.jp/reservationeditbydate?birthday=1&birthmonth=1&birthyear=2006&day={targetDate.Day}&from=date&month={targetDate.Month}&placeId={placeId}&sex=%E7%94%B7%E6%80%A7&year={targetDate.Year}";
-
-    public Task<BloodDonationAvailability> FetchAsync(DateTime targetDate, string placeId, CancellationToken ct = default)
-        => FetchAsync(targetDate, placeId, AllTypes, ct);
-
-    public async Task<BloodDonationAvailability> FetchAsync(DateTime targetDate, string placeId, IEnumerable<BloodDonationTypeEnum> bdTypes, CancellationToken ct = default)
+    public static string BuildReservePageUrl(DateTime targetDate, string placeId, DateOnly birthDate, GenderEnum gender)
     {
-        var doc = await _angleContext.OpenAsync(BuildReservePageUrl(targetDate, placeId), ct);
+        string sex = Uri.EscapeDataString(gender == GenderEnum.Female ? "女性" : "男性");
+        return "https://www.kenketsu.jp/reservationeditbydate"
+             + $"?birthday={birthDate.Day}&birthmonth={birthDate.Month}&birthyear={birthDate.Year}"
+             + $"&day={targetDate.Day}&from=date&month={targetDate.Month}"
+             + $"&placeId={placeId}&sex={sex}&year={targetDate.Year}";
+    }
+
+    public Task<BloodDonationAvailability> FetchAsync(DateTime targetDate, string placeId, DateOnly birthDate, GenderEnum gender, CancellationToken ct = default)
+        => FetchAsync(targetDate, placeId, birthDate, gender, AllTypes, ct);
+
+    public async Task<BloodDonationAvailability> FetchAsync(DateTime targetDate, string placeId, DateOnly birthDate, GenderEnum gender, IEnumerable<BloodDonationTypeEnum> bdTypes, CancellationToken ct = default)
+    {
+        var doc = await _angleContext.OpenAsync(BuildReservePageUrl(targetDate, placeId, birthDate, gender), ct);
 
         BloodDonationAvailability availability = new();
         foreach (var bdType in bdTypes)

@@ -170,6 +170,42 @@ input.form-ctrl:focus, select.form-ctrl:focus { outline: none; border-color: #e7
 .btn-gray { background: #ecf0f1; color: #555; border: none; border-radius: 20px; padding: 8px 20px; font-size: 0.85rem; font-weight: 600; cursor: pointer; font-family: inherit; }
 .btn-gray:hover { background: #dfe6e9; }
 
+/* 生年月日・性別（照会に使う本人の条件） */
+.profile-lead { font-size: 0.85rem; color: #555; line-height: 1.8; margin-bottom: 16px; }
+.profile-form { max-width: 420px; }
+.form-hint { font-size: 0.72rem; color: #aaa; margin-top: 4px; }
+
+.gender-tabs { display: flex; gap: 6px; }
+.gender-tab {
+    font-size: 0.85rem; border-radius: 8px; padding: 8px 22px;
+    border: 1.5px solid #e0e0e0; background: white; color: #888;
+    font-weight: 700; cursor: pointer;
+}
+.gender-tab:hover:not(.active) { border-color: #f0c8c8; color: #c0392b; }
+.gender-tab.active { background: #c0392b; border-color: #c0392b; color: white; }
+
+.profile-error { font-size: 0.78rem; color: #c0392b; margin-top: 10px; }
+
+/* 個人情報の扱い。目立つ位置に置いて誤解を防ぐ */
+.profile-privacy {
+    background: #fbfbfb; border: 1px solid #eee; border-radius: 8px;
+    padding: 10px 12px; margin-top: 16px; font-size: 0.75rem; color: #777; line-height: 1.8;
+}
+.profile-privacy b { color: #555; }
+.profile-privacy ul { margin: 6px 0 0; padding-left: 1.3em; }
+.profile-privacy code { background: #f2f2f2; border-radius: 4px; padding: 1px 4px; font-size: 0.95em; }
+
+.profile-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+/* 条件カードに常時出す本人条件 */
+.profile-note {
+    margin-top: 8px; padding: 8px 11px;
+    background: #fbfbfb; border: 1px solid #eee; border-radius: 8px;
+    font-size: 0.72rem; color: #888;
+}
+.profile-note b { color: #555; }
+.profile-note-sub { color: #bbb; margin-left: 6px; }
+
 /* 検索方向の切替（1日×複数ルーム／1ルーム×複数日） */
 .mode-tabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
 .mode-tab {

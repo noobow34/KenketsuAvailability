@@ -54,6 +54,34 @@ else if (!Remote.Config.Enabled)
         </button>
     </div>
 }
+else if (!VersionCheck.Allowed)
+{
+    @*このバージョンが使用不可に設定されている。更新してもらうしかない*@
+    <div class="section-card state-card is-stopped">
+        <div class="state-icon"><i class="fa-solid fa-circle-arrow-up"></i></div>
+        <div class="state-title">アップデートが必要です</div>
+        <div class="state-text">@VersionCheck.Reason</div>
+        <div class="state-text">お使いのバージョンは @AppInfo.Version です。最新版をダウンロードしてください。</div>
+        <div class="state-actions">
+            <button type="button" class="btn-red" @onclick="() => Browser.Open(ReleasesUrl)">
+                <i class="fa-solid fa-arrow-up-right-from-square me-1"></i>最新版のダウンロードページを開く
+            </button>
+        </div>
+    </div>
+    <AuthorMessage Config="Remote.Config" />
+}
+else if (!Store.HasProfile)
+{
+    @*生年月日・性別が未登録。これが無いと本人の条件で照会できない*@
+    <div class="section-card">
+        <div class="section-title"><i class="fa-solid fa-user me-1"></i>最初に生年月日と性別を登録してください</div>
+        <p class="profile-lead">
+            献血予約サイトの空き状況ページは、生年月日と性別を条件として受け取る作りになっています。
+            架空の値を送るのは不誠実なため、<b>ご自身の正しい値を登録してください。</b>
+        </p>
+        <ProfileForm OnSave="SaveProfile" SaveLabel="登録して始める" />
+    </div>
+}
 else
 {
     <AuthorMessage Config="Remote.Config" />
@@ -165,6 +193,14 @@ else
             <span class="rate-remain @(Limiter.RemainingHourly == 0 ? "is-empty" : "")">
                 この1時間の残り @Limiter.RemainingHourly / @Limiter.HourlyRequestLimit 件
             </span>
+        </div>
+
+        @*照会に使う本人の条件。誤っていると結果が変わるので常に見えるようにしておく*@
+        <div class="profile-note">
+            <i class="fa-solid fa-user me-1"></i>
+            この条件で照会しています：<b>@ProfileText</b>
+            <button type="button" class="btn-link" @onclick="() => profileEditShow = true">変更</button>
+            <span class="profile-note-sub">この情報が作者へ送られることはありません</span>
         </div>
     </div>
 
@@ -298,6 +334,17 @@ else
     </div>
 </div>
 
+<!-- 生年月日・性別の変更 -->
+<div class="modal-overlay @(profileEditShow ? "show" : "")" @onclick="() => profileEditShow = false">
+    <div class="modal-box" style="width:min(94vw, 420px);" @onclick:stopPropagation="true">
+        <div style="font-size:0.9rem; font-weight:700; color:#c0392b; margin-bottom:10px;">
+            <i class="fa-solid fa-user me-1"></i>生年月日・性別の変更
+        </div>
+        <ProfileForm InitialBirthDate="Store.Settings.BirthDate" InitialGender="Store.Settings.Gender"
+                     ShowCancel="true" OnSave="SaveProfile" OnCancel="() => profileEditShow = false" />
+    </div>
+</div>
+
 <Dialogs @ref="dialogs" />
 
 @code {
@@ -333,6 +380,45 @@ else
     private CenterMaster Master => Remote.Centers;
 
     private bool reloading;
+
+    /// <summary>使用不可バージョンだったときに案内するダウンロードページ。</summary>
+    private const string ReleasesUrl = "https://github.com/noobow34/KenketsuAvailability/releases/latest";
+
+    private bool profileEditShow;
+
+    private (bool Allowed, string Reason) VersionCheck => Remote.Config.CheckVersion(AppInfo.ParsedVersion);
+
+    /// <summary>条件カードに出す「1990/01/02・男性」のような表記。</summary>
+    private string ProfileText
+    {
+        get
+        {
+            var settings = Store.Settings;
+            if (settings.BirthDate is not DateOnly date || settings.Gender is not GenderEnum gender) return "未登録";
+            return $"{date:yyyy/MM/dd}生（{Age(date)}歳）・{gender.GetDescription()}";
+        }
+    }
+
+    /// <summary>誕生日が来ているかを考慮した満年齢。</summary>
+    private static int Age(DateOnly birthDate)
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        int age = today.Year - birthDate.Year;
+        if (birthDate.AddYears(age) > today) age--;
+        return age;
+    }
+
+    private void SaveProfile((DateOnly BirthDate, GenderEnum Gender) profile)
+    {
+        Store.SaveProfile(profile.BirthDate, profile.Gender);
+        profileEditShow = false;
+        //初回登録の直後は、この時点で初めて検索条件を組み立てられるようになる
+        if (results.Count > 0)
+        {
+            results.Clear();
+            showProgress = false;
+        }
+    }
 
     //確定済みの選択（条件カードに出ている内容）
     private List<int> applied = [];
@@ -773,6 +859,13 @@ else
 
     private async Task SearchAsync()
     {
+        //本人の条件でしか照会できない。未登録なら検索画面自体を出していないが、念のため
+        if (Store.Settings.BirthDate is not DateOnly birthDate || Store.Settings.Gender is not GenderEnum gender)
+        {
+            dialogs?.ShowMessage("生年月日と性別を登録してください。", "⚠️");
+            return;
+        }
+
         var targets = BuildTargets();
         if (targets == null) return;
 
@@ -818,14 +911,14 @@ else
                     Prefecture = byDate
                         ? null
                         : string.IsNullOrWhiteSpace(center.Prefecture) ? PrefectureRegions.Other : center.Prefecture!,
-                    ReserveUrl = BloodDonationAvailabilityFetcher.BuildReservePageUrl(targetDateTime, center.PlaceId ?? "")
+                    ReserveUrl = BloodDonationAvailabilityFetcher.BuildReservePageUrl(targetDateTime, center.PlaceId ?? "", birthDate, gender)
                 };
 
                 try
                 {
                     //先方サイトへ実際に投げる直前に記録する（1件＝1リクエスト）
                     Limiter.RecordRequest();
-                    var availability = await fetcher.FetchAsync(targetDateTime, center.PlaceId ?? "", ct);
+                    var availability = await fetcher.FetchAsync(targetDateTime, center.PlaceId ?? "", birthDate, gender, ct);
                     room.Types = BloodDonationAvailabilityFetcher.AllTypes.Select(t => new TypeResult
                     {
                         Key = t,

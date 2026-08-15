@@ -23,10 +23,10 @@ public enum BloodDonationTypeEnum
     All
 }
 
-public static class BloodDonationTypeEnumExtensions
+public static class EnumExtensions
 {
     /// <summary>Description 属性の文字列（Noobow.Commons の GetDescription 相当）。</summary>
-    public static string GetDescription(this BloodDonationTypeEnum value)
+    public static string GetDescription(this Enum value)
     {
         var field = value.GetType().GetField(value.ToString());
         var attribute = field?.GetCustomAttributes(typeof(DescriptionAttribute), false)
