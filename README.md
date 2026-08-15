@@ -53,7 +53,7 @@
 
 ## ダウンロード
 
-### ⬇ [最新版をダウンロード（v1.1.0）](https://github.com/noobow34/KenketsuAvailability/releases/download/v1.1.0/KenketsuAvailability-v1.1.0-win-x64.exe)
+### ⬇ [最新版をダウンロード（v1.2.0）](https://github.com/noobow34/KenketsuAvailability/releases/download/v1.2.0/KenketsuAvailability-v1.2.0-win-x64.exe)
 
 ダウンロードした exe をそのまま実行するだけです。
 インストール作業や .NET ランタイムの導入は不要です（自己完結・単一ファイル）。
